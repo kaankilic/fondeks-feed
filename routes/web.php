@@ -32,5 +32,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/news', [Admin\NewsController::class, 'index'])->name('news');
     Route::get('/guides', [Admin\GuideController::class, 'index'])->name('guides');
     Route::get('/ingest-runs', [Admin\IngestRunController::class, 'index'])->name('ingest-runs');
+    Route::get('/ingest', [Admin\IngestController::class, 'index'])->name('ingest');
+    Route::post('/ingest/run', [Admin\IngestController::class, 'run'])->name('ingest.run');
     Route::get('/users', [Admin\UserController::class, 'index'])->name('users');
 });

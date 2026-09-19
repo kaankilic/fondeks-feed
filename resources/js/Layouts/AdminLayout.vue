@@ -42,6 +42,7 @@
                     <slot name="header" />
                 </div>
                 <div class="flex items-center gap-3">
+                    <slot name="header-actions" />
                     <span class="text-xs text-zinc-500 dark:text-zinc-400">
                         {{ $page.props.auth?.user?.email }}
                     </span>
@@ -114,6 +115,7 @@ const navGroups = [
     {
         label: 'Sistem',
         items: [
+            { href: '/admin/ingest', label: 'Manuel Ingest', icon: 'pi pi-play-circle' },
             { href: '/admin/ingest-runs', label: 'Ingest Runs', icon: 'pi pi-sync' },
             { href: '/admin/users', label: 'Kullanıcılar', icon: 'pi pi-users' },
         ],
@@ -123,7 +125,7 @@ const navGroups = [
 function isActive(href) {
     const url = $page.url.split('?')[0];
     if (href === '/admin') return url === '/admin';
-    return url.startsWith(href);
+    return url === href || url.startsWith(href + '/');
 }
 
 function logout() {
