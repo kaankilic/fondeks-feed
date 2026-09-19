@@ -1,61 +1,101 @@
 <template>
-    <div class="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div class="min-h-screen bg-background text-foreground">
+        <!-- Sidebar -->
         <aside
-            class="fixed inset-y-0 left-0 z-30 w-60 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 transition-transform lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:translate-x-0"
             :class="{ '-translate-x-full': !sidebarOpen }"
         >
-            <div class="flex h-14 items-center border-b border-zinc-200 px-4 dark:border-zinc-800">
-                <span class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                    Fondeks Feed
-                </span>
+            <!-- Brand -->
+            <div class="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+                    <i class="pi pi-chart-line text-sm"></i>
+                </div>
+                <div class="flex min-w-0 flex-col">
+                    <span class="truncate text-sm font-semibold leading-tight text-sidebar-foreground">Fondeks Feed</span>
+                    <span class="truncate text-xs leading-tight text-muted-foreground">Yönetim Paneli</span>
+                </div>
             </div>
-            <nav class="flex flex-col gap-0.5 p-2 overflow-y-auto h-[calc(100vh-3.5rem)]">
-                <template v-for="group in navGroups" :key="group.label">
-                    <span class="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                        {{ group.label }}
-                    </span>
-                    <a
-                        v-for="item in group.items"
-                        :key="item.href"
-                        :href="item.href"
-                        class="flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors"
-                        :class="isActive(item.href)
-                            ? 'text-zinc-900 bg-zinc-100 dark:text-zinc-50 dark:bg-zinc-800'
-                            : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:text-zinc-50 dark:hover:bg-zinc-800/50'"
-                    >
-                        <i :class="item.icon" class="text-xs w-4 text-center"></i>
-                        {{ item.label }}
-                    </a>
-                </template>
+
+            <!-- Nav -->
+            <nav class="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+                <div v-for="group in navGroups" :key="group.label">
+                    <p class="px-2 pb-1.5 text-xs font-medium text-muted-foreground">{{ group.label }}</p>
+                    <div class="space-y-0.5">
+                        <a
+                            v-for="item in group.items"
+                            :key="item.href"
+                            :href="item.href"
+                            class="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors"
+                            :class="isActive(item.href)
+                                ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                                : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'"
+                        >
+                            <i :class="item.icon" class="text-sm w-4 text-center opacity-80"></i>
+                            <span class="flex-1 truncate">{{ item.label }}</span>
+                        </a>
+                    </div>
+                </div>
             </nav>
+
+            <!-- User card -->
+            <div class="border-t border-sidebar-border p-3">
+                <div class="flex items-center gap-2.5 rounded-md px-2 py-1.5">
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground uppercase">
+                        {{ initials }}
+                    </div>
+                    <div class="flex min-w-0 flex-1 flex-col">
+                        <span class="truncate text-sm font-medium leading-tight text-sidebar-foreground">
+                            {{ $page.props.auth?.user?.name || 'Admin' }}
+                        </span>
+                        <span class="truncate text-xs leading-tight text-muted-foreground">
+                            {{ $page.props.auth?.user?.email }}
+                        </span>
+                    </div>
+                    <button
+                        @click="logout"
+                        class="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        title="Çıkış"
+                    >
+                        <i class="pi pi-sign-out text-sm"></i>
+                    </button>
+                </div>
+            </div>
         </aside>
 
-        <div class="lg:pl-60">
-            <header class="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-zinc-200 bg-white/80 px-5 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+        <!-- Sidebar overlay (mobile) -->
+        <div
+            v-if="sidebarOpen"
+            class="fixed inset-0 z-20 bg-black/50 lg:hidden"
+            @click="sidebarOpen = false"
+        ></div>
+
+        <!-- Main -->
+        <div class="lg:pl-64">
+            <header class="sticky top-0 z-10 flex h-16 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
                 <button
-                    class="lg:hidden -ml-2 rounded-md p-1.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                    class="-ml-1 rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
                     @click="sidebarOpen = !sidebarOpen"
                 >
                     <i class="pi pi-bars text-base"></i>
                 </button>
-                <div class="flex-1 flex items-center gap-3">
+
+                <div class="min-w-0 flex-1">
                     <slot name="header" />
                 </div>
-                <div class="flex items-center gap-3">
+
+                <div class="flex items-center gap-1.5">
                     <slot name="header-actions" />
-                    <span class="text-xs text-zinc-500 dark:text-zinc-400">
-                        {{ $page.props.auth?.user?.email }}
-                    </span>
-                    <a
-                        href="/logout"
-                        @click.prevent="logout"
-                        class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                    <button
+                        @click="toggle"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        title="Tema"
                     >
-                        Çıkış
-                    </a>
+                        <i :class="isDark ? 'pi pi-sun' : 'pi pi-moon'" class="text-sm"></i>
+                    </button>
                 </div>
             </header>
-            <main class="p-5">
+
+            <main class="p-4 lg:p-6">
                 <slot />
             </main>
         </div>
@@ -63,17 +103,25 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
+import { useTheme } from '@/Composables/useTheme';
 
 const $page = usePage();
 const sidebarOpen = ref(false);
+const { isDark, toggle } = useTheme();
+
+const initials = computed(() => {
+    const u = $page.props.auth?.user;
+    const src = u?.name || u?.email || 'A';
+    return src.slice(0, 2).toUpperCase();
+});
 
 const navGroups = [
     {
         label: 'Genel',
         items: [
-            { href: '/admin', label: 'Dashboard', icon: 'pi pi-home' },
+            { href: '/admin', label: 'Dashboard', icon: 'pi pi-th-large' },
         ],
     },
     {
@@ -109,7 +157,7 @@ const navGroups = [
         label: 'İçerik',
         items: [
             { href: '/admin/news', label: 'Haberler', icon: 'pi pi-megaphone' },
-            { href: '/admin/guides', label: 'Rehberler', icon: 'pi pi-book' },
+            { href: '/admin/guides', label: 'Rehberler', icon: 'pi pi-bookmark' },
         ],
     },
     {

@@ -5,15 +5,15 @@
                 v-if="link.url"
                 :href="link.url"
                 @click.prevent="visit(link.url)"
-                class="inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-xs font-medium transition-colors"
+                class="inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition-colors"
                 :class="link.active
-                    ? 'bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-900'
-                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'"
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground hover:bg-accent hover:text-accent-foreground'"
                 v-html="link.label"
             />
             <span
                 v-else
-                class="inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-xs font-medium text-zinc-300 dark:text-zinc-600"
+                class="inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2.5 text-xs font-medium text-muted-foreground/50"
                 v-html="link.label"
             />
         </template>

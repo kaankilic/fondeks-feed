@@ -1,17 +1,33 @@
 <template>
     <AdminLayout>
         <template #header>
-            <h1 class="text-sm font-medium text-zinc-900 dark:text-zinc-50">{{ title }}</h1>
+            <div class="flex items-center gap-2">
+                <h1 class="text-base font-semibold tracking-tight text-foreground">{{ title }}</h1>
+            </div>
+        </template>
+        <template #header-actions>
+            <slot name="actions" />
         </template>
 
         <div class="space-y-4">
-            <div v-if="$slots.filters" class="flex items-center gap-3">
-                <slot name="filters" />
+            <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+                <div
+                    v-if="$slots.filters || description"
+                    class="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <p v-if="description" class="text-sm text-muted-foreground">{{ description }}</p>
+                    <div v-else></div>
+                    <div class="flex items-center gap-2">
+                        <slot name="filters" />
+                    </div>
+                </div>
+                <div class="overflow-hidden rounded-b-xl">
+                    <slot />
+                </div>
             </div>
-            <div class="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-                <slot />
+            <div v-if="$slots.footer" class="flex items-center justify-between">
+                <slot name="footer" />
             </div>
-            <slot name="footer" />
         </div>
     </AdminLayout>
 </template>
@@ -21,5 +37,6 @@ import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 defineProps({
     title: String,
+    description: String,
 });
 </script>

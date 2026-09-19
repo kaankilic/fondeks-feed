@@ -1,7 +1,7 @@
 <template>
     <AdminLayout>
         <template #header>
-            <h1 class="text-sm font-medium text-zinc-900 dark:text-zinc-50">Manuel Ingest</h1>
+            <h1 class="text-sm font-medium text-foreground">Manuel Ingest</h1>
         </template>
         <template #header-actions>
             <Button label="Yenile" icon="pi pi-refresh" size="small" text @click="refresh" :loading="refreshing" />
@@ -13,33 +13,33 @@
             <div
                 v-for="job in jobs"
                 :key="job.key"
-                class="flex flex-col rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                class="flex flex-col rounded-xl border border-border bg-card shadow-sm p-4"
             >
                 <div class="flex items-start justify-between gap-2">
-                    <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{{ job.label }}</h2>
+                    <h2 class="text-sm font-semibold text-foreground">{{ job.label }}</h2>
                     <Tag v-if="job.last" :severity="statusSev(job.last.status)" :value="job.last.status" />
                     <Tag v-else severity="secondary" value="—" />
                 </div>
-                <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 flex-1">{{ job.description }}</p>
+                <p class="mt-1 text-xs text-muted-foreground flex-1">{{ job.description }}</p>
 
-                <p v-if="job.last" class="mt-2 text-[11px] text-zinc-400 dark:text-zinc-500">
+                <p v-if="job.last" class="mt-2 text-[11px] text-muted-foreground">
                     Son: {{ formatDate(job.last.started_at) }} · {{ job.last.rows_written }} satır
                 </p>
 
                 <div v-if="job.params.length" class="mt-3 flex flex-wrap gap-2">
                     <div v-if="job.params.includes('days')" class="flex flex-col gap-1">
-                        <label class="text-[10px] uppercase tracking-wide text-zinc-400">Gün</label>
+                        <label class="text-[10px] uppercase tracking-wide text-muted-foreground">Gün</label>
                         <InputNumber v-model="forms[job.key].days" :min="1" :max="1000" showButtons
                             buttonLayout="horizontal" size="small" inputClass="w-16 text-center"
                             :placeholder="defaultDays(job.key)" />
                     </div>
                     <div v-if="job.params.includes('limit')" class="flex flex-col gap-1">
-                        <label class="text-[10px] uppercase tracking-wide text-zinc-400">Limit</label>
+                        <label class="text-[10px] uppercase tracking-wide text-muted-foreground">Limit</label>
                         <InputNumber v-model="forms[job.key].limit" :min="1" :max="5000"
                             size="small" inputClass="w-20" placeholder="varsayılan" />
                     </div>
                     <div v-if="job.params.includes('period')" class="flex flex-col gap-1">
-                        <label class="text-[10px] uppercase tracking-wide text-zinc-400">Dönem</label>
+                        <label class="text-[10px] uppercase tracking-wide text-muted-foreground">Dönem</label>
                         <InputText v-model="forms[job.key].period" size="small" class="w-28"
                             placeholder="yyyy-mm-01" />
                     </div>
@@ -56,10 +56,10 @@
             </div>
         </div>
 
-        <div class="mt-6 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-            <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-                <h2 class="text-sm font-medium text-zinc-900 dark:text-zinc-50">Son Çalışmalar</h2>
-                <a href="/admin/ingest-runs" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50">Tümü</a>
+        <div class="mt-6 rounded-xl border border-border bg-card shadow-sm">
+            <div class="flex items-center justify-between border-b border-border px-4 py-3">
+                <h2 class="text-sm font-medium text-foreground">Son Çalışmalar</h2>
+                <a href="/admin/ingest-runs" class="text-xs text-muted-foreground hover:text-foreground">Tümü</a>
             </div>
             <DataTable :value="recentRuns" size="small" stripedRows>
                 <Column field="job" header="Job" style="width: 160px" />

@@ -10,7 +10,7 @@
                 <template #body="{ data }">
                     <div class="flex items-center gap-2">
                         <span class="inline-block h-4 w-4 rounded" :style="{ background: data.color }" />
-                        <span class="text-xs text-zinc-500">{{ data.color }}</span>
+                        <span class="text-xs text-muted-foreground">{{ data.color }}</span>
                     </div>
                 </template>
             </Column>

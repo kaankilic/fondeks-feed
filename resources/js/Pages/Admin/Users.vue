@@ -6,7 +6,7 @@
         <DataTable :value="users.data" :rows="25" stripedRows size="small">
             <Column field="id" header="ID" style="width: 280px">
                 <template #body="{ data }">
-                    <span class="text-xs font-mono text-zinc-500">{{ data.id }}</span>
+                    <span class="text-xs font-mono text-muted-foreground">{{ data.id }}</span>
                 </template>
             </Column>
             <Column field="email" header="E-posta" sortable />

@@ -1,18 +1,18 @@
 <template>
-    <div class="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+    <div class="flex min-h-screen items-center justify-center bg-background">
         <div class="w-full max-w-sm space-y-6 px-4">
             <div class="space-y-2 text-center">
-                <h1 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                <h1 class="text-xl font-semibold tracking-tight text-foreground">
                     Fondeks Feed
                 </h1>
-                <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                <p class="text-sm text-muted-foreground">
                     Yönetim paneline giriş yapın
                 </p>
             </div>
 
             <form @submit.prevent="submit" class="space-y-4">
                 <div class="space-y-2">
-                    <label for="email" class="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    <label for="email" class="text-sm font-medium text-foreground">
                         E-posta
                     </label>
                     <InputText
@@ -30,7 +30,7 @@
                 </div>
 
                 <div class="space-y-2">
-                    <label for="password" class="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    <label for="password" class="text-sm font-medium text-foreground">
                         Şifre
                     </label>
                     <Password
@@ -50,7 +50,7 @@
 
                 <div class="flex items-center gap-2">
                     <Checkbox v-model="form.remember" :binary="true" inputId="remember" />
-                    <label for="remember" class="text-sm text-zinc-600 dark:text-zinc-400">
+                    <label for="remember" class="text-sm text-muted-foreground">
                         Beni hatırla
                     </label>
                 </div>
