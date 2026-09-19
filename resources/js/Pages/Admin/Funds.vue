@@ -4,8 +4,18 @@
             <InputText v-model="search" placeholder="Kod, ad veya kurucu ara..." class="w-64" @input="onSearch" />
         </template>
         <DataTable :value="funds.data" :rows="25" stripedRows size="small">
-            <Column field="code" header="Kod" sortable style="width: 80px" />
-            <Column field="name" header="Ad" sortable />
+            <Column field="code" header="Kod" sortable style="width: 90px">
+                <template #body="{ data }">
+                    <Link :href="`/admin/funds/${data.code}`" class="font-medium text-foreground hover:underline">
+                        {{ data.code }}
+                    </Link>
+                </template>
+            </Column>
+            <Column field="name" header="Ad" sortable>
+                <template #body="{ data }">
+                    <Link :href="`/admin/funds/${data.code}`" class="hover:underline">{{ data.name }}</Link>
+                </template>
+            </Column>
             <Column field="founder" header="Kurucu" sortable />
             <Column field="category" header="Kategori" sortable />
             <Column field="fund_type" header="Tip" style="width: 60px" />
@@ -28,6 +38,7 @@
 </template>
 
 <script setup>
+import { Link } from '@inertiajs/vue3';
 import AdminPage from '@/Components/AdminPage.vue';
 import Pagination from '@/Components/Pagination.vue';
 import DataTable from 'primevue/datatable';

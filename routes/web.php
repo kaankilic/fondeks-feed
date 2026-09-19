@@ -17,6 +17,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/', Admin\DashboardController::class)->name('dashboard');
     Route::get('/founders', [Admin\FounderController::class, 'index'])->name('founders');
     Route::get('/funds', [Admin\FundController::class, 'index'])->name('funds');
+    Route::get('/funds/{code}', [Admin\FundController::class, 'show'])->name('funds.show');
     Route::get('/symbols', [Admin\SymbolController::class, 'index'])->name('symbols');
     Route::get('/fund-daily-stats', [Admin\FundDailyStatController::class, 'index'])->name('fund-daily-stats');
     Route::get('/fund-positions', [Admin\FundPositionController::class, 'index'])->name('fund-positions');
