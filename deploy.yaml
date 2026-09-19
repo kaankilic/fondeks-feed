@@ -1,0 +1,26 @@
+import:
+  - recipe/laravel.php
+
+
+config:
+  application: fondeks-feed
+  repository: 'git@github.com:kaankilic/fondeks-feed.git'
+  keep_releases: 3
+
+
+hosts:
+  135.125.236.78:
+    remote_user: root
+    identity_file: '~/.ssh/id_rsa'
+    forwardAgent: true
+    ssh_multiplexing: false
+    deploy_path: '/home/{{application}}'
+
+tasks:
+  build:
+    - run: uptime
+  deploy:vendors:
+    - run: 'cd {{release_or_current_path}} && composer update cocur/slugify lcobucci/clock nette/schema nette/utils league/config --with-dependencies --no-interaction --no-dev 2>&1 && composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader 2>&1'
+
+after:
+  deploy:failed: deploy:unlock
