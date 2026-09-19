@@ -20,7 +20,9 @@ tasks:
   build:
     - run: uptime
   deploy:vendors:
-    - run: 'cd {{release_or_current_path}} && composer update cocur/slugify lcobucci/clock nette/schema nette/utils league/config --with-dependencies --no-interaction --no-dev 2>&1 && composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader 2>&1'
+    - run: 'cd {{release_or_current_path}} && composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader 2>&1'
+  artisan:migrate:
+    - run: 'echo "Skipping migrations — using existing database"'
 
 after:
   deploy:failed: deploy:unlock
