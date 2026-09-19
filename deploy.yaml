@@ -21,8 +21,13 @@ tasks:
     - run: uptime
   deploy:vendors:
     - run: 'cd {{release_or_current_path}} && composer install --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader 2>&1'
+  # Build the Inertia/Vite frontend on the release. Node is required at runtime
+  # too (the scrypt login check shells out to node), so it lives on the host.
+  deploy:assets:
+    - run: 'cd {{release_or_current_path}} && corepack yarn install --frozen-lockfile 2>&1 && corepack yarn build 2>&1'
   artisan:migrate:
     - run: 'echo "Skipping migrations — using existing database"'
 
 after:
+  deploy:vendors: deploy:assets
   deploy:failed: deploy:unlock
