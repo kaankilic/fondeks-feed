@@ -27,6 +27,10 @@ return [
         'base_url' => env('KAP_BASE_URL', 'https://www.kap.org.tr'),
         'timeout_ms' => (int) env('KAP_TIMEOUT_MS', 25000),
         'concurrency' => (int) env('KAP_CONCURRENCY', 3),
+        // Conservative pacing — KAP will IP-block a source that requests too
+        // fast. Default ~30 requests/min; runs on a dedicated single worker.
+        'rate_limit' => (int) env('KAP_RATE_LIMIT', 30),
+        'rate_window_ms' => (int) env('KAP_RATE_WINDOW_MS', 60000),
         'submit_limit' => (int) env('KAP_SUBMIT_LIMIT', 200),
         'document_limit' => (int) env('KAP_DOCUMENT_LIMIT', 500),
         'disclosure_limit' => (int) env('KAP_DISCLOSURE_LIMIT', 500),

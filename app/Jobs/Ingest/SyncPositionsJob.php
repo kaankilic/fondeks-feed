@@ -25,7 +25,9 @@ class SyncPositionsJob implements ShouldQueue, ShouldBeUnique
 
     public function __construct(
         public ?string $period = null,
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function uniqueId(): string
     {

@@ -23,7 +23,9 @@ class SyncDisclosuresJob implements ShouldQueue, ShouldBeUnique
     public function __construct(
         public ?int $days = null,
         public ?int $limit = null,
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function uniqueId(): string
     {

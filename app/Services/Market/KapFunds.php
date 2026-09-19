@@ -19,7 +19,11 @@ class KapFunds
     public function __construct()
     {
         $this->base = rtrim((string) config('ingest.kap.base_url'), '/');
-        $this->http = new HttpClient();
+        $this->http = new HttpClient(
+            config('ingest.kap.rate_limit'),
+            config('ingest.kap.rate_window_ms'),
+            failFast429: true,
+        );
     }
 
     private function headers(string $referer): array

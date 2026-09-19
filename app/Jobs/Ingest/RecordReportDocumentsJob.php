@@ -25,7 +25,9 @@ class RecordReportDocumentsJob implements ShouldQueue, ShouldBeUniqueUntilProces
     public function __construct(
         public string $period,
         public int $after = 0,
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function uniqueId(): string
     {

@@ -22,7 +22,9 @@ class ResolveDisclosureLinksJob implements ShouldQueue, ShouldBeUniqueUntilProce
 
     public function __construct(
         public int $after = 0,
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function uniqueId(): string
     {

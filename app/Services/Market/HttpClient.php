@@ -23,6 +23,8 @@ class HttpClient
     public function __construct(
         private readonly int $rateLimit = 0,
         private readonly int $rateWindowMs = 60000,
+        /** Throw immediately on HTTP 429 instead of cooling down and retrying. */
+        private readonly bool $failFast429 = false,
     ) {}
 
     private function nowMs(): float
@@ -115,6 +117,18 @@ class HttpClient
 
                 if ($response->failed()) {
                     $status = $response->status();
+
+                    // A 429 from an IP-blocking source (KAP) will not clear by
+                    // retrying — throw at once so the job fails and its chain
+                    // stops, rather than hammering a banned endpoint.
+                    if ($status === 429 && $this->failFast429) {
+                        throw new UpstreamError(
+                            "{$method} {$url} failed with 429 (rate limited / blocked)",
+                            429,
+                            null,
+                        );
+                    }
+
                     if ($status === 429) {
                         $cooldown = $this->retryAfterMs($response) ?? $cooldownMs;
                         $this->pause($cooldown);
@@ -154,7 +168,10 @@ class HttpClient
             if ($error->status === null) {
                 return true;
             }
-            return $error->status === 429 || $error->status >= 500;
+            if ($error->status === 429) {
+                return !$this->failFast429;
+            }
+            return $error->status >= 500;
         }
         return true;
     }

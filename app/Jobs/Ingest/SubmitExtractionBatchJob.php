@@ -23,7 +23,9 @@ class SubmitExtractionBatchJob implements ShouldQueue
     public function __construct(
         public string $period,
         public array $disclosureIndexes,
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function handle(HoldingsJobs $jobs): void
     {

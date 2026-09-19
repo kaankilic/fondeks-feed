@@ -23,7 +23,9 @@ class SyncFundInceptionsJob implements ShouldQueue, ShouldBeUniqueUntilProcessin
 
     public function __construct(
         public string $after = '',
-    ) {}
+    ) {
+        $this->onQueue('kap');
+    }
 
     public function uniqueId(): string
     {
