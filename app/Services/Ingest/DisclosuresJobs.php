@@ -114,4 +114,58 @@ class DisclosuresJobs
 
         return ['discovery' => $discovery, 'links' => $links];
     }
+
+    /**
+     * Resolve PDF links for one bounded slice of disclosures past $afterIndex,
+     * ordered by disclosure_index so a chain drains deterministically without
+     * re-selecting rows a previous chunk already tried. Returns a cursor and
+     * whether more rows may remain.
+     */
+    public function resolveLinksChunk(int $afterIndex, int $chunk): array
+    {
+        return $this->runs->withRun('kap-disclosure-links', ['after' => $afterIndex, 'chunk' => $chunk], function () use ($afterIndex, $chunk) {
+            $pending = DB::table('fund_disclosures')
+                ->whereNull('pdf_url')
+                ->where('attachment_count', '>', 0)
+                ->where('disclosure_index', '>', $afterIndex)
+                ->orderBy('disclosure_index')
+                ->limit($chunk)
+                ->get();
+
+            if ($pending->isEmpty()) {
+                return ['rowsRead' => 0, 'rowsWritten' => 0, 'missing' => 0, 'cursor' => $afterIndex, 'more' => false];
+            }
+
+            $written = 0;
+            $missing = 0;
+            $cursor = $afterIndex;
+
+            foreach ($pending as $row) {
+                $cursor = max($cursor, $row->disclosure_index);
+                try {
+                    $document = $this->kap->resolveReportDocument($row->disclosure_index);
+                } catch (\Throwable $e) {
+                    $missing++;
+                    Log::warning("[kap] {$row->disclosure_index}: {$e->getMessage()}");
+                    continue;
+                }
+                if (!$document) {
+                    $missing++;
+                    continue;
+                }
+                DB::table('fund_disclosures')
+                    ->where('disclosure_index', $row->disclosure_index)
+                    ->update(['pdf_url' => $document['url'], 'pdf_name' => $document['fileName']]);
+                $written++;
+            }
+
+            return [
+                'rowsRead' => $pending->count(),
+                'rowsWritten' => $written,
+                'missing' => $missing,
+                'cursor' => $cursor,
+                'more' => $pending->count() === $chunk,
+            ];
+        });
+    }
 }

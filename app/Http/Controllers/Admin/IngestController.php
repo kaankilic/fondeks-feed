@@ -44,13 +44,13 @@ class IngestController extends Controller
         ],
         'inceptions' => [
             'label' => 'Fon Kuruluş Tarihleri', 'run' => 'fund-inceptions',
-            'description' => 'KAP kayıtlarından halka arz tarihleri.',
-            'params' => ['limit'],
+            'description' => 'KAP kayıtlarından halka arz tarihleri (parça parça).',
+            'params' => [],
         ],
         'disclosures' => [
             'label' => 'KAP Bildirimleri', 'run' => 'kap-disclosures',
-            'description' => 'Fon bildirimlerini keşfet ve PDF linklerini çöz.',
-            'params' => ['days', 'limit'],
+            'description' => 'Bildirimleri keşfet; PDF linkleri parça parça çözülür.',
+            'params' => ['days'],
         ],
         'positions' => [
             'label' => 'Pozisyonlar (Gönder)', 'run' => 'kap-extract-submit',
@@ -108,7 +108,7 @@ class IngestController extends Controller
             'daily' => SyncDailyStatsJob::dispatch(days: $days ?? 3),
             'allocations' => SyncAllocationsJob::dispatch(days: $days),
             'indices' => SyncMarketIndicesJob::dispatch(days: $days ?? 5),
-            'inceptions' => SyncFundInceptionsJob::dispatch(limit: $limit),
+            'inceptions' => SyncFundInceptionsJob::dispatch(),
             'disclosures' => SyncDisclosuresJob::dispatch(days: $days, limit: $limit),
             'positions' => SyncPositionsJob::dispatch(period: $period),
             'collect' => CollectPositionsJob::dispatch(),

@@ -30,4 +30,5 @@ tasks:
 
 after:
   deploy:vendors: deploy:assets
+  deploy:symlink: artisan:horizon:terminate
   deploy:failed: deploy:unlock

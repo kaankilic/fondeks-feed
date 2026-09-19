@@ -186,6 +186,151 @@ class HoldingsJobs
         });
     }
 
+    /**
+     * Resolve report documents for one bounded slice of a period's reports past
+     * $afterIndex. Cursor-paginated so a chain drains deterministically.
+     */
+    public function recordDocumentsChunk(string $period, int $afterIndex, int $chunk): array
+    {
+        return $this->runs->withRun('kap-documents', ['period' => $period, 'after' => $afterIndex, 'chunk' => $chunk], function () use ($period, $afterIndex, $chunk) {
+            $pending = DB::table('kap_portfolio_reports')
+                ->where('period', $period)
+                ->whereNull('document_obj_id')
+                ->whereIn('status', self::DOCUMENTABLE)
+                ->where('disclosure_index', '>', $afterIndex)
+                ->orderBy('disclosure_index')
+                ->limit($chunk)
+                ->get();
+
+            if ($pending->isEmpty()) {
+                return ['rowsRead' => 0, 'rowsWritten' => 0, 'missing' => 0, 'cursor' => $afterIndex, 'more' => false];
+            }
+
+            $tracked = $this->trackedFundCodes();
+            $written = 0;
+            $missing = 0;
+            $cursor = $afterIndex;
+
+            foreach ($pending as $row) {
+                $cursor = max($cursor, $row->disclosure_index);
+                if (!$tracked->has($row->fund_code)) {
+                    continue;
+                }
+                try {
+                    $document = $this->kap->resolveReportDocument($row->disclosure_index);
+                } catch (\Throwable $e) {
+                    $missing++;
+                    Log::warning("[kap] {$row->disclosure_index}: {$e->getMessage()}");
+                    continue;
+                }
+                if (!$document) {
+                    $missing++;
+                    continue;
+                }
+                $this->markReport($row->disclosure_index, [
+                    'document_obj_id' => $document['objId'],
+                    'document_name' => $document['fileName'],
+                    'document_url' => $document['url'],
+                ]);
+                $written++;
+            }
+
+            return [
+                'rowsRead' => $pending->count(),
+                'rowsWritten' => $written,
+                'missing' => $missing,
+                'cursor' => $cursor,
+                'more' => $pending->count() === $chunk,
+            ];
+        });
+    }
+
+    /** Disclosure indexes for a period's reports awaiting submission. */
+    public function pendingSubmitIndexes(string $period, ?array $statuses = null, ?int $limit = null): array
+    {
+        $statuses ??= self::SUBMITTABLE;
+        $limit ??= config('ingest.kap.submit_limit');
+
+        return DB::table('kap_portfolio_reports')
+            ->where('period', $period)
+            ->whereIn('status', $statuses)
+            ->orderBy('published_at')
+            ->limit($limit)
+            ->pluck('disclosure_index')
+            ->all();
+    }
+
+    /**
+     * Download the PDFs for one explicit set of reports and submit them as a
+     * single extraction batch. One batch per job keeps runtime bounded.
+     */
+    public function submitOneBatch(string $period, array $disclosureIndexes): array
+    {
+        if (!KapExtract::isConfigured()) {
+            throw new \RuntimeException('ANTHROPIC_API_KEY is not set — portfolio reports cannot be extracted');
+        }
+
+        return $this->runs->withRun('kap-extract-submit', ['period' => $period, 'count' => count($disclosureIndexes), 'model' => KapExtract::MODEL], function () use ($period, $disclosureIndexes) {
+            $reports = DB::table('kap_portfolio_reports')
+                ->whereIn('disclosure_index', $disclosureIndexes)
+                ->get();
+
+            if ($reports->isEmpty()) {
+                return ['rowsRead' => 0, 'rowsWritten' => 0, 'batches' => []];
+            }
+
+            $tracked = $this->trackedFundCodes();
+            $requests = [];
+
+            foreach ($reports as $row) {
+                if (!$tracked->has($row->fund_code)) {
+                    $this->markReport($row->disclosure_index, ['status' => 'skipped', 'note' => 'fund is not in the catalogue']);
+                    continue;
+                }
+                try {
+                    $pdf = $this->reportPdf($row);
+                } catch (\Throwable $e) {
+                    $this->markReport($row->disclosure_index, ['status' => 'failed', 'note' => mb_substr($e->getMessage(), 0, 1000)]);
+                    continue;
+                }
+                if (!$pdf) {
+                    $this->markReport($row->disclosure_index, ['status' => 'failed', 'note' => 'filing carries no PDF attachment']);
+                    continue;
+                }
+                $requests[] = $this->extract->buildExtractionRequest($this->toPortfolioReport($row), $pdf);
+            }
+
+            if (empty($requests)) {
+                return ['rowsRead' => $reports->count(), 'rowsWritten' => 0, 'batches' => []];
+            }
+
+            $batch = $this->extract->submitBatch($requests);
+
+            $queued = [];
+            foreach ($requests as $request) {
+                $index = KapExtract::disclosureIndexFrom($request['custom_id']);
+                if ($index !== null) {
+                    $queued[] = $index;
+                }
+            }
+
+            DB::transaction(function () use ($batch, $period, $requests, $queued) {
+                DB::table('kap_extraction_batches')->insert([
+                    'id' => $batch['id'],
+                    'period' => $period,
+                    'status' => $batch['status'],
+                    'request_count' => count($requests),
+                    'submitted_at' => now(),
+                ]);
+                DB::table('kap_portfolio_reports')
+                    ->whereIn('disclosure_index', $queued)
+                    ->update(['status' => 'queued', 'batch_id' => $batch['id'], 'note' => null]);
+            });
+
+            return ['rowsRead' => $reports->count(), 'rowsWritten' => count($requests), 'batches' => [$batch['id']]];
+        });
+    }
+
     /** The report PDF for one row, going through the recorded document. */
     private function reportPdf(object $row): ?string
     {

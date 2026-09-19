@@ -3,33 +3,39 @@
 namespace App\Jobs\Ingest;
 
 use App\Services\Ingest\InceptionsJobs;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Backfills fund launch dates from KAP. Runs through the catalogue a slice at a
- * time and then idles, since a launch date is read once and never changes.
+ * Backfills fund launch dates from KAP, one small slice per job. Reads up to
+ * CHUNK records, then re-dispatches itself from the cursor until the catalogue
+ * is drained — so no single job makes hundreds of sequential page reads.
  */
-class SyncFundInceptionsJob implements ShouldQueue, ShouldBeUnique
+class SyncFundInceptionsJob implements ShouldQueue, ShouldBeUniqueUntilProcessing
 {
     use Queueable;
 
-    public int $tries = 2;
-    public int $timeout = 1200;
-    public int $backoff = 60;
+    public int $tries = 1;
+    public int $timeout = 300;
+
+    private const CHUNK = 25;
 
     public function __construct(
-        public ?int $limit = null,
+        public string $after = '',
     ) {}
 
     public function uniqueId(): string
     {
-        return 'sync-fund-inceptions';
+        return 'sync-fund-inceptions:' . $this->after;
     }
 
     public function handle(InceptionsJobs $jobs): void
     {
-        $jobs->syncFundInceptions($this->limit);
+        $result = $jobs->inceptionChunk($this->after, self::CHUNK);
+
+        if ($result['more']) {
+            self::dispatch($result['cursor']);
+        }
     }
 }

@@ -8,16 +8,16 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * Fund disclosure archive. Discovers the window's KAP filings for funds we
- * track, then resolves the PDF link for anything still missing one. Both passes
- * are idempotent and bounded, so overlap and re-runs are safe.
+ * Fund disclosure archive coordinator. Runs the bounded discovery walk, then
+ * hands PDF-link resolution to a self-chaining chunk job so no single job makes
+ * hundreds of sequential KAP lookups.
  */
 class SyncDisclosuresJob implements ShouldQueue, ShouldBeUnique
 {
     use Queueable;
 
     public int $tries = 2;
-    public int $timeout = 1200;
+    public int $timeout = 600;
     public int $backoff = 60;
 
     public function __construct(
@@ -32,6 +32,12 @@ class SyncDisclosuresJob implements ShouldQueue, ShouldBeUnique
 
     public function handle(DisclosuresJobs $jobs): void
     {
-        $jobs->syncDisclosures($this->days, $this->limit);
+        $days = $this->days ?? config('ingest.kap.disclosure_days');
+        $jobs->discoverDisclosures(
+            now()->subDays($days)->format('Y-m-d'),
+            now()->format('Y-m-d'),
+        );
+
+        ResolveDisclosureLinksJob::dispatch(0);
     }
 }
