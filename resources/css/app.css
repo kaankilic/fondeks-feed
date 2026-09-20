@@ -234,3 +234,40 @@
     --p-tag-padding: 0.125rem 0.5rem;
     font-size: 0.6875rem;
 }
+
+/* ── Quill (WYSIWYG) → shadcn ─────────────────────────────────────────────── */
+.wysiwyg .ql-toolbar.ql-snow {
+    border: none;
+    border-bottom: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
+    background: var(--muted);
+}
+.wysiwyg .ql-container.ql-snow {
+    border: none;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    color: var(--foreground);
+}
+.wysiwyg .ql-editor {
+    min-height: 240px;
+}
+.wysiwyg .ql-editor.ql-blank::before {
+    color: var(--muted-foreground);
+    font-style: normal;
+}
+.wysiwyg .ql-snow .ql-stroke { stroke: var(--muted-foreground); }
+.wysiwyg .ql-snow .ql-fill { fill: var(--muted-foreground); }
+.wysiwyg .ql-snow .ql-picker { color: var(--muted-foreground); }
+.wysiwyg .ql-snow.ql-toolbar button:hover .ql-stroke,
+.wysiwyg .ql-snow.ql-toolbar button.ql-active .ql-stroke {
+    stroke: var(--foreground);
+}
+.wysiwyg .ql-snow.ql-toolbar button:hover .ql-fill,
+.wysiwyg .ql-snow.ql-toolbar button.ql-active .ql-fill {
+    fill: var(--foreground);
+}
+.wysiwyg .ql-snow .ql-picker-options {
+    background: var(--popover);
+    border-color: var(--border);
+    color: var(--popover-foreground);
+}
