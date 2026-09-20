@@ -29,6 +29,12 @@ class User extends Authenticatable
         return $this->password_hash;
     }
 
+    /** The users table (shared with the Next.js app) has no remember_token column. */
+    public function getRememberTokenName(): ?string
+    {
+        return null;
+    }
+
     public function sessions()
     {
         return $this->hasMany(Session::class, 'user_id');

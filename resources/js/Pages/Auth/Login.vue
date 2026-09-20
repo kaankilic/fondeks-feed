@@ -48,13 +48,6 @@
                     </small>
                 </div>
 
-                <div class="flex items-center gap-2">
-                    <Checkbox v-model="form.remember" :binary="true" inputId="remember" />
-                    <label for="remember" class="text-sm text-muted-foreground">
-                        Beni hatırla
-                    </label>
-                </div>
-
                 <Button
                     type="submit"
                     label="Giriş Yap"
@@ -71,12 +64,10 @@ import { useForm } from '@inertiajs/vue3';
 import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Button from 'primevue/button';
-import Checkbox from 'primevue/checkbox';
 
 const form = useForm({
     email: '',
     password: '',
-    remember: false,
 });
 
 const submit = () => {
