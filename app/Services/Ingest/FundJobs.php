@@ -181,6 +181,76 @@ class FundJobs
         return $this->syncDailyStats(self::isoDaysAgo($days), self::today());
     }
 
+    /**
+     * Fills each fund's künye (ISIN, risk, valör days) from TEFAS one bounded
+     * slice at a time. Only funds still missing the data are read, so this
+     * converges then idles — like the inceptions backfill. Cursor by code.
+     */
+    public function enrichProfilesChunk(string $afterCode, int $chunk): array
+    {
+        $provider = new TefasProvider();
+
+        return $this->runs->withRun('fund-profiles', ['after' => $afterCode, 'chunk' => $chunk], function () use ($provider, $afterCode, $chunk) {
+            $pending = DB::table('funds')
+                ->where('is_active', true)
+                ->where('code', '>', $afterCode)
+                ->where(function ($q) {
+                    $q->whereNull('isin')->orWhereNull('risk');
+                })
+                ->orderBy('code')
+                ->limit($chunk)
+                ->pluck('code');
+
+            if ($pending->isEmpty()) {
+                return ['rowsRead' => 0, 'rowsWritten' => 0, 'missing' => 0, 'cursor' => $afterCode, 'more' => false];
+            }
+
+            $written = 0;
+            $missing = 0;
+            $cursor = $afterCode;
+
+            foreach ($pending as $code) {
+                $cursor = $code > $cursor ? $code : $cursor;
+
+                try {
+                    $profile = $provider->fetchFundProfile($code);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning("[profiles] {$code}: {$e->getMessage()}");
+                    continue;
+                }
+
+                if (!$profile) {
+                    $missing++;
+                    continue;
+                }
+
+                // Only overwrite with values TEFAS actually returned, so a null
+                // valör (common for pension funds) never wipes existing data.
+                $update = ['updated_at' => now()];
+                foreach (['isin' => 'isin', 'risk' => 'risk', 'buy_value_days' => 'buyValueDays', 'sell_value_days' => 'sellValueDays'] as $col => $key) {
+                    if ($profile[$key] !== null) {
+                        $update[$col] = $profile[$key];
+                    }
+                }
+
+                if (count($update) > 1) {
+                    DB::table('funds')->where('code', $code)->update($update);
+                    $written++;
+                } else {
+                    $missing++;
+                }
+            }
+
+            return [
+                'rowsRead' => $pending->count(),
+                'rowsWritten' => $written,
+                'missing' => $missing,
+                'cursor' => $cursor,
+                'more' => $pending->count() === $chunk,
+            ];
+        });
+    }
+
     /** Imports the portfolio breakdown behind "Varlık Dağılımı". */
     public function syncAllocations(?string $from = null, ?string $to = null): array
     {

@@ -6,6 +6,7 @@ use App\Jobs\Ingest\SyncDailyStatsJob;
 use App\Jobs\Ingest\SyncDisclosuresJob;
 use App\Jobs\Ingest\SyncFundCatalogJob;
 use App\Jobs\Ingest\SyncFundInceptionsJob;
+use App\Jobs\Ingest\SyncFundProfilesJob;
 use App\Jobs\Ingest\SyncMarketIndicesJob;
 use App\Jobs\Ingest\SyncPositionsJob;
 use Illuminate\Support\Facades\Schedule;
@@ -41,6 +42,10 @@ Schedule::job(new SyncFundCatalogJob())
 // Fund launch dates from KAP — converges then idles, so cheap to run daily.
 Schedule::job(new SyncFundInceptionsJob())
     ->dailyAt('07:00')->timezone($tz)->onOneServer()->withoutOverlapping();
+
+// Fund künye (ISIN, risk, valör) from TEFAS — converges then idles.
+Schedule::job(new SyncFundProfilesJob())
+    ->dailyAt('07:20')->timezone($tz)->onOneServer()->withoutOverlapping();
 
 // Portfolio disclosures archive.
 Schedule::job(new SyncDisclosuresJob())

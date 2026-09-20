@@ -9,6 +9,7 @@ use App\Jobs\Ingest\SyncDailyStatsJob;
 use App\Jobs\Ingest\SyncDisclosuresJob;
 use App\Jobs\Ingest\SyncFundCatalogJob;
 use App\Jobs\Ingest\SyncFundInceptionsJob;
+use App\Jobs\Ingest\SyncFundProfilesJob;
 use App\Jobs\Ingest\SyncMarketIndicesJob;
 use App\Jobs\Ingest\SyncPositionsJob;
 use App\Models\IngestRun;
@@ -45,6 +46,11 @@ class IngestController extends Controller
         'inceptions' => [
             'label' => 'Fon Kuruluş Tarihleri', 'run' => 'fund-inceptions',
             'description' => 'KAP kayıtlarından halka arz tarihleri (parça parça).',
+            'params' => [],
+        ],
+        'profiles' => [
+            'label' => 'Fon Künye (ISIN/Risk/Valör)', 'run' => 'fund-profiles',
+            'description' => 'TEFAS profil bilgisinden ISIN, risk ve valör (parça parça).',
             'params' => [],
         ],
         'disclosures' => [
@@ -109,6 +115,7 @@ class IngestController extends Controller
             'allocations' => SyncAllocationsJob::dispatch(days: $days),
             'indices' => SyncMarketIndicesJob::dispatch(days: $days ?? 5),
             'inceptions' => SyncFundInceptionsJob::dispatch(),
+            'profiles' => SyncFundProfilesJob::dispatch(),
             'disclosures' => SyncDisclosuresJob::dispatch(days: $days, limit: $limit),
             'positions' => SyncPositionsJob::dispatch(period: $period),
             'collect' => CollectPositionsJob::dispatch(),

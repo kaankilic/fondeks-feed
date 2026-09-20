@@ -21,6 +21,8 @@ class TefasProvider
         'founders' => '/fonKurucuGetir',
         'dailyList' => '/fonGnlBlgSiraliGetir',
         'allocation' => '/dagilimSiraliGetirT',
+        /** Per-fund künye: ISIN, risk value (1–7), valör days, commissions. */
+        'profile' => '/fonProfilBilgiGetir',
     ];
 
     private const MAPPING = [
@@ -288,6 +290,30 @@ class TefasProvider
         }
 
         return $stats;
+    }
+
+    /**
+     * Per-fund künye from TEFAS: ISIN, risk value, and settlement valör days.
+     * TEFAS names the fields from the fund's side, so its "geri alış" (buy-back)
+     * is the investor's Alış valörü and its "satış" (sale) the Satış valörü.
+     * Returns null when TEFAS has no profile for the code.
+     */
+    public function fetchFundProfile(string $code): ?array
+    {
+        $rows = $this->call(self::ENDPOINTS['profile'], ['fonKodu' => strtoupper($code), 'dil' => 'TR']);
+        if (empty($rows)) {
+            return null;
+        }
+
+        $row = $rows[0];
+        $isin = Parse::pick($row, ['isinKodu']);
+
+        return [
+            'isin' => is_string($isin) && trim($isin) !== '' ? trim($isin) : null,
+            'risk' => Parse::toInteger(Parse::pick($row, ['riskDegeri'])),
+            'buyValueDays' => Parse::toInteger($row['fonGeriAlisValor'] ?? null),
+            'sellValueDays' => Parse::toInteger($row['fonSatisValor'] ?? null),
+        ];
     }
 
     /** @return array<int, array> allocation slices */
