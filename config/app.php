@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | API Domain
+    |--------------------------------------------------------------------------
+    |
+    | The dedicated host the JSON API answers on at its root, with no "/api"
+    | prefix (e.g. "api.fondeks.com" in production). Leave it empty in local
+    | development, where the API is reached under the "/api" path instead.
+    |
+    */
+
+    'api_domain' => env('API_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

@@ -1,0 +1,462 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Fondeks API",
+    "version": "1.0.0",
+    "description": "Public market-data API for Fondeks funds. Responses mirror the Fondeks web client exactly: successful responses return the data object directly (no envelope), and errors return `{ \"error\": \"<message>\" }`. The market-data endpoints are public and edge-cacheable; authentication endpoints are backed by Laravel Sanctum personal access tokens.",
+    "contact": { "name": "Fondeks", "email": "info@fondeks.com" }
+  },
+  "servers": [
+    { "url": "https://api.fondeks.com", "description": "Production (dedicated API subdomain, no /api prefix)" },
+    { "url": "http://localhost:8000/api", "description": "Local development (served under /api on the app host)" }
+  ],
+  "tags": [
+    { "name": "Funds", "description": "Fund list, search and detail" },
+    { "name": "Discovery", "description": "Leader boards" },
+    { "name": "System", "description": "Health probe" },
+    { "name": "Auth", "description": "Sanctum token authentication" }
+  ],
+  "paths": {
+    "/funds": {
+      "get": {
+        "tags": ["Funds"],
+        "summary": "Fund list with filtering, sorting and paging",
+        "operationId": "listFunds",
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 80 }, "description": "Free-text match over code, name and founder." },
+          { "name": "category", "in": "query", "required": false, "schema": { "type": "string", "enum": ["Hisse Senedi", "Kıymetli Maden", "Serbest", "Değişken", "Para Piyasası", "Borçlanma"] } },
+          { "name": "minRisk", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 7 } },
+          { "name": "maxRisk", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 7 } },
+          { "name": "minReturn", "in": "query", "required": false, "schema": { "type": "number", "minimum": -100, "maximum": 1000 }, "description": "Minimum trailing one-year return, in percent." },
+          { "name": "sort", "in": "query", "required": false, "schema": { "type": "string", "enum": ["y1", "m3", "m1", "daily", "price", "aum", "investors"], "default": "y1" } },
+          { "name": "dir", "in": "query", "required": false, "schema": { "type": "string", "enum": ["asc", "desc"], "default": "desc" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 } },
+          { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of funds ordered by the requested field.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "public, s-maxage=60, stale-while-revalidate=300" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FundListResponse" },
+                "example": {
+                  "items": [
+                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.387541, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6 }
+                  ],
+                  "total": 2054,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/funds/search": {
+      "get": {
+        "tags": ["Funds"],
+        "summary": "Quick-search over code, name and issuer",
+        "description": "Returns up to 6 matches. An empty array is returned for queries shorter than 2 characters.",
+        "operationId": "searchFunds",
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Search term (minimum 2 characters to match)." }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching funds in a reduced shape for the nav search.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SearchResponse" },
+                "example": {
+                  "results": [
+                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "initials": "AP", "color": "#E30613", "category": "Hisse Senedi", "y1": 62.4 }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/funds/{code}": {
+      "get": {
+        "tags": ["Funds"],
+        "summary": "One fund, by code or full slug",
+        "description": "Accepts either a bare TEFAS code (`AFT`) or a full slug (`AFT-ak-portfoy-...`). Use `include` to attach the daily price series, the monthly series, and/or the detail bundle (volatility, allocation, similar funds, mover panels and the compare table).",
+        "operationId": "getFund",
+        "parameters": [
+          { "name": "code", "in": "path", "required": true, "schema": { "type": "string" }, "example": "AFT" },
+          { "name": "include", "in": "query", "required": false, "schema": { "type": "string" }, "description": "Comma-separated list of: prices, monthly, detail.", "example": "prices,monthly,detail" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The fund, plus any included sections.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "public, s-maxage=60, stale-while-revalidate=300" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FundDetailResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/leaders": {
+      "get": {
+        "tags": ["Discovery"],
+        "summary": "Discovery leader boards",
+        "description": "returns — Getiri Liderleri; gainers — En Çok Kazandıran; losers — En Az Kazandıran; investors — Yatırımcısı En Çok Artan; new — Son Çıkan Fonlar.",
+        "operationId": "getLeaders",
+        "parameters": [
+          { "name": "type", "in": "query", "required": false, "schema": { "type": "string", "enum": ["returns", "gainers", "losers", "investors", "new"], "default": "returns" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 5 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested leader board.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "public, s-maxage=60, stale-while-revalidate=300" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LeadersResponse" },
+                "examples": {
+                  "returns": { "summary": "type=returns", "value": { "type": "returns", "items": [ { "code": "AFT", "slug": "AFT-...", "name": "AK PORTFÖY ...", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.38, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6 } ] } },
+                  "investors": { "summary": "type=investors", "value": { "type": "investors", "items": [ { "fund": { "code": "PHF", "name": "PİRAMİT PORTFÖY ...", "y1": 0 }, "growthPct": 128.4, "investors": 8123 } ] } }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Liveness and data-freshness probe",
+        "description": "Returns 503 when the database is unreachable, the last import failed, or prices have gone stale (older than 4 days).",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Healthy.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "no-store" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": { "status": "ok", "checks": { "provider": "tefas", "database": "ok", "funds": 2533, "dailyRows": 522802, "latestDate": "2026-09-21", "ageDays": 0, "lastRun": { "status": "success", "startedAt": "2026-09-21T16:20:02+00:00", "finishedAt": "2026-09-21T16:20:05+00:00", "rowsWritten": 4922, "error": null } } }
+              }
+            }
+          },
+          "503": {
+            "description": "Degraded.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": { "status": "degraded", "checks": { "provider": "tefas", "database": "unreachable", "error": "connection refused" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Exchange credentials for a personal access token",
+        "operationId": "login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" },
+                  "device_name": { "type": "string", "maxLength": 255, "description": "Optional label for the issued token.", "default": "api" }
+                }
+              },
+              "example": { "email": "admin@fondeks.com", "password": "secret", "device_name": "cli" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A bearer token and the authenticated user.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" }, "example": { "token": "3|abcDEF...", "user": { "id": "0192...", "email": "admin@fondeks.com", "name": "Admin" } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/user": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "The authenticated token's owner",
+        "operationId": "currentUser",
+        "security": [ { "bearerAuth": [] } ],
+        "responses": {
+          "200": { "description": "The current user.", "content": { "application/json": { "schema": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/User" } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Revoke the current token",
+        "operationId": "logout",
+        "security": [ { "bearerAuth": [] } ],
+        "responses": {
+          "200": { "description": "Token revoked.", "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" } } }, "example": { "message": "logged out" } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "description": "Laravel Sanctum personal access token, sent as `Authorization: Bearer <token>`." }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid query or body.",
+        "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "no-store" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "risk must be between 1 and 7" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found.",
+        "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "no-store" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "fund ZZZ not found" } } }
+      },
+      "Unauthorized": {
+        "description": "Bad credentials (custom error shape).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Geçersiz e-posta veya şifre." } } }
+      },
+      "Unauthenticated": {
+        "description": "Missing or invalid bearer token (Laravel default shape).",
+        "content": { "application/json": { "schema": { "type": "object", "properties": { "message": { "type": "string" } } }, "example": { "message": "Unauthenticated." } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": { "error": { "type": "string" } }
+      },
+      "Fund": {
+        "type": "object",
+        "required": ["code", "slug", "name", "founder", "founderInitials", "founderColor", "category", "isin", "managementFee", "withholdingTax", "buyValueDays", "sellValueDays", "onTefas", "price", "priceDate", "daily", "w1", "m1", "m3", "y1", "inceptionDate", "aum", "investors", "risk"],
+        "properties": {
+          "code": { "type": "string", "description": "TEFAS fund code." },
+          "slug": { "type": "string", "description": "Canonical URL segment: CODE-fund-name." },
+          "name": { "type": "string" },
+          "founder": { "type": "string" },
+          "founderInitials": { "type": "string" },
+          "founderColor": { "type": "string" },
+          "category": { "type": "string" },
+          "isin": { "type": ["string", "null"] },
+          "managementFee": { "type": "number", "description": "Yıllık yönetim ücreti, %." },
+          "withholdingTax": { "type": ["number", "null"], "description": "Stopaj oranı, %." },
+          "buyValueDays": { "type": ["integer", "null"] },
+          "sellValueDays": { "type": ["integer", "null"] },
+          "onTefas": { "type": ["boolean", "null"] },
+          "price": { "type": "number", "description": "Latest unit price in TRY." },
+          "priceDate": { "type": "string", "format": "date" },
+          "daily": { "type": "number", "description": "Percentage return since the previous session." },
+          "w1": { "type": "number", "description": "Trailing one week, %." },
+          "m1": { "type": "number", "description": "Trailing one month, %." },
+          "m3": { "type": "number", "description": "Trailing three months, %." },
+          "y1": { "type": "number", "description": "Trailing one year, %." },
+          "inceptionDate": { "type": ["string", "null"], "format": "date" },
+          "aum": { "type": "number", "description": "Fon toplam değeri (latest month), TRY." },
+          "investors": { "type": ["integer", "null"] },
+          "risk": { "type": ["integer", "null"], "minimum": 1, "maximum": 7 }
+        }
+      },
+      "FundListResponse": {
+        "type": "object",
+        "required": ["items", "total", "limit", "offset"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Fund" } },
+          "total": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": ["code", "slug", "name", "founder", "initials", "color", "category", "y1"],
+        "properties": {
+          "code": { "type": "string" },
+          "slug": { "type": "string" },
+          "name": { "type": "string" },
+          "founder": { "type": "string" },
+          "initials": { "type": "string" },
+          "color": { "type": "string" },
+          "category": { "type": "string" },
+          "y1": { "type": "number" }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": ["results"],
+        "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } } }
+      },
+      "PricePoint": {
+        "type": "object",
+        "required": ["date", "price"],
+        "properties": { "date": { "type": "string", "format": "date" }, "price": { "type": "number" } }
+      },
+      "MonthlyStat": {
+        "type": "object",
+        "required": ["month", "totalValue", "investorCount", "netFlow"],
+        "properties": {
+          "month": { "type": "string", "format": "date" },
+          "totalValue": { "type": "number" },
+          "investorCount": { "type": ["integer", "null"] },
+          "netFlow": { "type": "number", "description": "Change in size the return does not explain (net para giriş/çıkışı)." }
+        }
+      },
+      "Allocation": {
+        "type": "object",
+        "required": ["label", "pct"],
+        "properties": { "label": { "type": "string" }, "pct": { "type": "number" } }
+      },
+      "SimilarFund": {
+        "type": "object",
+        "required": ["code", "slug", "label", "initials", "color", "similarity", "y1", "risk"],
+        "properties": {
+          "code": { "type": "string" },
+          "slug": { "type": "string" },
+          "label": { "type": "string" },
+          "initials": { "type": "string" },
+          "color": { "type": "string" },
+          "similarity": { "type": "number", "description": "Portfolio overlap, 0–100." },
+          "y1": { "type": "number" },
+          "risk": { "type": ["integer", "null"] }
+        }
+      },
+      "HoldingChange": {
+        "type": "object",
+        "required": ["label", "color", "weight", "change"],
+        "properties": {
+          "label": { "type": "string" },
+          "color": { "type": ["string", "null"] },
+          "weight": { "type": "number", "description": "Share of the portfolio now, %." },
+          "change": { "type": "number", "description": "Change in that share over the period, in percentage points." }
+        }
+      },
+      "CompareRow": {
+        "type": "object",
+        "required": ["label", "values"],
+        "properties": {
+          "label": { "type": "string" },
+          "values": { "type": "array", "items": { "type": "string" }, "description": "One preformatted (Turkish) value per code in compare.codes." }
+        }
+      },
+      "FundDetailResponse": {
+        "type": "object",
+        "required": ["fund"],
+        "description": "Always carries `fund`. `prices`/`monthly` appear when requested via include; the detail keys (volatility, allocation, similar, increased, decreased, compare) appear when include contains `detail`.",
+        "properties": {
+          "fund": { "$ref": "#/components/schemas/Fund" },
+          "prices": { "type": "array", "items": { "$ref": "#/components/schemas/PricePoint" } },
+          "monthly": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyStat" } },
+          "volatility": { "type": ["number", "null"], "description": "Annualised volatility over the last year, %." },
+          "allocation": { "type": "array", "items": { "$ref": "#/components/schemas/Allocation" } },
+          "similar": { "type": "array", "items": { "$ref": "#/components/schemas/SimilarFund" } },
+          "increased": { "type": "array", "items": { "$ref": "#/components/schemas/HoldingChange" } },
+          "decreased": { "type": "array", "items": { "$ref": "#/components/schemas/HoldingChange" } },
+          "compare": {
+            "type": "object",
+            "required": ["codes", "rows"],
+            "properties": {
+              "codes": { "type": "array", "items": { "type": "string" } },
+              "rows": { "type": "array", "items": { "$ref": "#/components/schemas/CompareRow" } }
+            }
+          }
+        }
+      },
+      "InvestorGrowthItem": {
+        "type": "object",
+        "required": ["fund", "growthPct", "investors"],
+        "properties": {
+          "fund": { "$ref": "#/components/schemas/Fund" },
+          "growthPct": { "type": "number" },
+          "investors": { "type": "integer" }
+        }
+      },
+      "LeadersResponse": {
+        "type": "object",
+        "required": ["type", "items"],
+        "properties": {
+          "type": { "type": "string", "enum": ["returns", "gainers", "losers", "investors", "new"] },
+          "items": {
+            "type": "array",
+            "description": "For every type except `investors`, items are Fund objects. For `investors`, items are InvestorGrowthItem objects.",
+            "items": {
+              "oneOf": [
+                { "$ref": "#/components/schemas/Fund" },
+                { "$ref": "#/components/schemas/InvestorGrowthItem" }
+              ]
+            }
+          }
+        }
+      },
+      "IngestRun": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "startedAt": { "type": ["string", "null"], "format": "date-time" },
+          "finishedAt": { "type": ["string", "null"], "format": "date-time" },
+          "rowsWritten": { "type": ["integer", "null"] },
+          "error": { "type": ["string", "null"] }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "checks"],
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded"] },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "provider": { "type": "string" },
+              "database": { "type": "string", "enum": ["ok", "unreachable"] },
+              "funds": { "type": "integer" },
+              "dailyRows": { "type": "integer" },
+              "latestDate": { "type": ["string", "null"], "format": "date" },
+              "ageDays": { "type": ["integer", "null"] },
+              "stale": { "type": "boolean" },
+              "error": { "type": "string" },
+              "lastRun": { "oneOf": [ { "$ref": "#/components/schemas/IngestRun" }, { "type": "null" } ] }
+            }
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "required": ["id", "email", "name"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": ["string", "null"] }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "required": ["token", "user"],
+        "properties": {
+          "token": { "type": "string", "description": "Plain-text personal access token; store it and send as a bearer token." },
+          "user": { "$ref": "#/components/schemas/User" }
+        }
+      }
+    }
+  }
+}
