@@ -23,9 +23,9 @@ use Illuminate\Support\Facades\Schedule;
 
 $tz = 'Europe/Istanbul';
 
-// Daily prices, size and investor counts — after the market closes.
+// Daily prices, size and investor counts — the day after the market closes.
 Schedule::job(new SyncDailyStatsJob(days: 3))
-    ->dailyAt('19:20')->timezone($tz)->onOneServer()->withoutOverlapping();
+    ->dailyAt('09:00')->timezone($tz)->onOneServer()->withoutOverlapping();
 
 // Portfolio breakdowns behind "Varlık Dağılımı".
 Schedule::job(new SyncAllocationsJob())

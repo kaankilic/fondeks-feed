@@ -108,8 +108,22 @@ class HttpClient
                     ->withOptions(['stream' => false]);
 
                 if ($body !== null) {
+                    // Encode once so Content-Length can be pinned. With a known
+                    // length under 1 MB, Guzzle hands the body to curl as a plain
+                    // CURLOPT_POSTFIELDS string, which curl can resend on its own.
+                    // Without the header it streams the body through a read
+                    // callback instead, and when an upstream like KAP drops the
+                    // connection mid-POST curl cannot rewind it — the
+                    // CURLE_SEND_FAIL_REWIND that surfaces as "unable to rewind
+                    // the body". `Expect:` empty drops the 100-continue handshake
+                    // that provokes the same resend.
+                    $json = json_encode($body);
                     $response = $request
-                        ->withBody(json_encode($body), 'application/json; charset=UTF-8')
+                        ->withHeaders([
+                            'Content-Length' => (string) strlen($json),
+                            'Expect' => '',
+                        ])
+                        ->withBody($json, 'application/json; charset=UTF-8')
                         ->send($method, $url);
                 } else {
                     $response = $request->send($method, $url);

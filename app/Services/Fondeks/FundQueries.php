@@ -8,6 +8,7 @@ use App\Support\Fondeks\Num;
 use App\Support\Fondeks\Palette;
 use App\Support\Fondeks\Slug;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,6 +20,28 @@ use Illuminate\Support\Facades\DB;
 class FundQueries
 {
     private const TRADING_DAYS_PER_YEAR = 252;
+
+    /**
+     * Read results are cached under this prefix, with a generation number folded
+     * into every key: bumping the generation retires the whole set at once, so
+     * no cache tags are needed (the `file`/`database` stores don't support them).
+     * The generation is the latest successful ingest run's finish time — read
+     * from the shared database, not the cache — so a worker that ingests new
+     * data and the web process that serves it always agree on the current
+     * generation, even when they run in separate containers with their own local
+     * caches. That is what makes a fresh price show up right after ingest instead
+     * of lingering behind a stale cache until the TTL.
+     */
+    private const CACHE_PREFIX = 'fondeks:funds';
+
+    /**
+     * A safety-net TTL. Invalidation is driven by the generation above, so this
+     * only bounds how long a superseded entry lingers before it is evicted.
+     */
+    private const CACHE_TTL_SECONDS = 3600;
+
+    /** Per-instance memo of the cache generation, so one request reads it once. */
+    private ?string $generation = null;
 
     /** A one-day price move this large is a restatement, not a return. */
     private const SERIES_BREAK_RATIO = 1;
@@ -103,21 +126,25 @@ class FundQueries
     /** All funds of one TEFAS universe, best one-year return first. */
     public function getFunds(string $fundType = Constants::PRODUCT_FUND_TYPE): array
     {
-        $rows = DB::select($this->snapshotBase().' where f.fund_type = ?', [$fundType]);
+        return $this->remember("list:{$fundType}", function () use ($fundType) {
+            $rows = DB::select($this->snapshotBase().' where f.fund_type = ?', [$fundType]);
 
-        $funds = array_map(fn ($row) => $this->toFund($row), $rows);
+            $funds = array_map(fn ($row) => $this->toFund($row), $rows);
 
-        usort($funds, fn ($a, $b) => $b['y1'] <=> $a['y1']);
+            usort($funds, fn ($a, $b) => $b['y1'] <=> $a['y1']);
 
-        return $funds;
+            return $funds;
+        });
     }
 
     /** One fund by code. */
     public function getFund(string $code): ?array
     {
-        $rows = DB::select($this->snapshotBase().' where upper(f.code) = ?', [strtoupper($code)]);
+        return $this->remember('fund:'.strtoupper($code), function () use ($code) {
+            $rows = DB::select($this->snapshotBase().' where upper(f.code) = ?', [strtoupper($code)]);
 
-        return isset($rows[0]) ? $this->toFund($rows[0]) : null;
+            return isset($rows[0]) ? $this->toFund($rows[0]) : null;
+        });
     }
 
     /** Maps a snapshot row onto the client's `Fund` shape, in the same key order. */
@@ -156,19 +183,21 @@ class FundQueries
     /** Daily price series, oldest first, limited to the last `days` sessions. */
     public function getFundPrices(string $code, int $days = 260): array
     {
-        $rows = DB::select(
-            "select to_char(date, 'YYYY-MM-DD') as date, price
-             from fund_daily_stats where fund_code = ?
-             order by date desc limit ?",
-            [$code, $days],
-        );
+        return $this->remember("prices:{$code}:{$days}", function () use ($code, $days) {
+            $rows = DB::select(
+                "select to_char(date, 'YYYY-MM-DD') as date, price
+                 from fund_daily_stats where fund_code = ?
+                 order by date desc limit ?",
+                [$code, $days],
+            );
 
-        $rows = array_reverse($rows);
+            $rows = array_reverse($rows);
 
-        return array_map(fn ($row) => [
-            'date' => $row->date,
-            'price' => Num::json($row->price),
-        ], $rows);
+            return array_map(fn ($row) => [
+                'date' => $row->date,
+                'price' => Num::json($row->price),
+            ], $rows);
+        });
     }
 
     /**
@@ -176,6 +205,11 @@ class FundQueries
      * the change in size the fund's own return does not explain.
      */
     public function getFundMonthly(string $code, int $months = 24): array
+    {
+        return $this->remember("monthly:{$code}:{$months}", fn () => $this->computeFundMonthly($code, $months));
+    }
+
+    private function computeFundMonthly(string $code, int $months): array
     {
         $rows = DB::select(
             "select to_char(date_trunc('month', date), 'YYYY-MM-DD') as month,
@@ -305,6 +339,11 @@ class FundQueries
      * `$fund` is the already-loaded snapshot for the requested code.
      */
     public function getFundDetail(string $code, array $fund): array
+    {
+        return $this->remember('detail:'.$fund['code'], fn () => $this->computeFundDetail($fund));
+    }
+
+    private function computeFundDetail(array $fund): array
     {
         $securityMoves = $this->getSecurityMoves($fund['code']);
         $allocationMoves = $this->getAllocationMoves($fund['code']);
@@ -606,6 +645,48 @@ class FundQueries
         }
 
         return ['healthy' => $healthy, 'checks' => $checks];
+    }
+
+    /**
+     * Memoise a read across requests. The key carries the current generation,
+     * so a {@see flush()} makes every prior entry unreachable at once. A `null`
+     * result is not stored, so a not-yet-known fund keeps missing cheaply.
+     */
+    private function remember(string $key, callable $callback): mixed
+    {
+        $version = $this->cacheGeneration();
+
+        return Cache::remember(
+            self::CACHE_PREFIX.":v{$version}:{$key}",
+            self::CACHE_TTL_SECONDS,
+            $callback,
+        );
+    }
+
+    /**
+     * The current cache generation: the finish time of the latest successful
+     * ingest run, as a compact digits-only token. It advances the moment any
+     * ingest commits, and lives in the shared database, so every process
+     * invalidates in lockstep without a shared cache. A per-instance memo keeps
+     * a single request from re-querying it.
+     */
+    private function cacheGeneration(): string
+    {
+        if ($this->generation !== null) {
+            return $this->generation;
+        }
+
+        try {
+            $latest = DB::scalar("select max(finished_at) from ingest_runs where status = 'success'");
+        } catch (\Throwable) {
+            // Never let a probe failure take down a read — fall back to a fixed
+            // generation so reads still work (just without cross-run busting).
+            $latest = null;
+        }
+
+        $token = $latest === null ? '0' : preg_replace('/\D/', '', (string) $latest);
+
+        return $this->generation = ($token === '' ? '0' : $token);
     }
 
     /** `array_map` with the item's index, the way the client's `.map((row, i))` reads. */
