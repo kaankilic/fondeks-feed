@@ -115,14 +115,18 @@ class HttpClient
                     // callback instead, and when an upstream like KAP drops the
                     // connection mid-POST curl cannot rewind it — the
                     // CURLE_SEND_FAIL_REWIND that surfaces as "unable to rewind
-                    // the body". `Expect:` empty drops the 100-continue handshake
-                    // that provokes the same resend.
+                    // the body".
+                    //
+                    // `expect => false` disables the "Expect: 100-continue"
+                    // handshake the Guzzle option way, not by setting a header:
+                    // an explicit Expect header would suppress Guzzle's own
+                    // suppression and let curl send the handshake, which KAP
+                    // rejects with 417. Left unset, Guzzle emits `Expect:` so
+                    // curl stays quiet.
                     $json = json_encode($body);
                     $response = $request
-                        ->withHeaders([
-                            'Content-Length' => (string) strlen($json),
-                            'Expect' => '',
-                        ])
+                        ->withHeaders(['Content-Length' => (string) strlen($json)])
+                        ->withOptions(['expect' => false])
                         ->withBody($json, 'application/json; charset=UTF-8')
                         ->send($method, $url);
                 } else {
