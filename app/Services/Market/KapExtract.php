@@ -85,7 +85,6 @@ PROMPT;
     {
         return [
             'type' => 'json_schema',
-            'name' => 'extraction',
             'schema' => [
                 'type' => 'object',
                 'properties' => [
