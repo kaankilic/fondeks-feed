@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
  */
 class KapExtract
 {
-    public const MODEL = 'claude-haiku-4-5';
+    public const MODEL = 'claude-haiku-4-5-20251001';
     private const MAX_TOKENS = 8000;
     private const EQUITY_TOTAL_TOLERANCE = 1.0;
     private const TICKER_PATTERN = '/^[A-Z0-9]{3,10}$/';
