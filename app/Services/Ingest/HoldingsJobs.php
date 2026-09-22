@@ -723,6 +723,85 @@ class HoldingsJobs
         return $outcome['ran'] ? $outcome['result'] : ['locked' => true];
     }
 
+    /**
+     * Extract one KAP disclosure's Portföy Dağılım Raporu on demand, synchronously:
+     * download its PDF, read it with Haiku, write the holdings snapshot and rebuild
+     * that period's movers. Powers the per-row "Çıkar" button in the Bildirimler
+     * admin panel. Throws on any failure so the caller can surface the reason.
+     */
+    public function extractDisclosureNow(int $disclosureIndex): array
+    {
+        $disclosure = DB::table('fund_disclosures')->where('disclosure_index', $disclosureIndex)->first();
+        if (!$disclosure) {
+            throw new \RuntimeException('bildirim bulunamadı');
+        }
+        if (trim((string) $disclosure->subject) !== KapClient::PORTFOLIO_REPORT_SUBJECT) {
+            throw new \RuntimeException('bildirim bir Portföy Dağılım Raporu değil');
+        }
+        if (!$this->trackedFundCodes()->has($disclosure->fund_code)) {
+            throw new \RuntimeException("fon {$disclosure->fund_code} takip edilmiyor");
+        }
+        if (!KapExtract::isConfigured()) {
+            throw new \RuntimeException('ANTHROPIC_API_KEY tanımlı değil');
+        }
+
+        return $this->runs->withRun('kap-extract-ondemand', [
+            'disclosureIndex' => $disclosureIndex,
+            'fundCode' => $disclosure->fund_code,
+            'model' => KapExtract::MODEL,
+        ], function () use ($disclosure, $disclosureIndex) {
+            $document = $this->kap->resolveReportDocument($disclosureIndex);
+            if (!$document) {
+                throw new \RuntimeException('bildirimde PDF eki bulunamadı');
+            }
+
+            $pdf = $this->kap->fetchDocumentPdf($document, $disclosureIndex);
+
+            $report = [
+                'disclosureIndex' => $disclosureIndex,
+                'fundCode' => $disclosure->fund_code,
+                'fundTitle' => $disclosure->fund_title ?: $disclosure->fund_code,
+                'period' => '',
+            ];
+
+            $outcome = $this->extract->extractOne($report, $pdf);
+            if (!$outcome['ok']) {
+                throw new \RuntimeException($outcome['error']);
+            }
+
+            $checked = $this->extract->validateExtraction($outcome['extraction'], $report);
+            if ($checked['missingTable']) {
+                throw new \RuntimeException('raporda hisse tablosu (bölüm III) yok');
+            }
+            if ($checked['rejected']) {
+                throw new \RuntimeException('doğrulama başarısız: ' . implode('; ', $checked['warnings']));
+            }
+
+            // The report states its own period; fall back to the month before
+            // publication, which is when a monthly report is normally filed.
+            $period = KapExtract::periodFromLabel($outcome['extraction']['periodLabel'] ?? null)
+                ?? self::previousPeriod(self::periodOf((string) $disclosure->published_at));
+
+            $written = $this->applyExtractedHoldings(
+                (object) ['fund_code' => $disclosure->fund_code, 'period' => $period],
+                $checked['holdings'],
+            );
+
+            // Rebuild the movers for the period so the diff against the prior
+            // month reflects the new snapshot immediately.
+            $positions = $this->computeFundPositions($period);
+
+            return [
+                'rowsRead' => count($checked['holdings']),
+                'rowsWritten' => $written,
+                'period' => $period,
+                'holdings' => count($checked['holdings']),
+                'movers' => $positions['rowsWritten'] ?? 0,
+                'warnings' => $checked['warnings'],
+            ];
+        });
+    }
+
     /** Reads a period's reports again from the documents already recorded. */
     public function reextractPositions(array $options = []): ?array
     {

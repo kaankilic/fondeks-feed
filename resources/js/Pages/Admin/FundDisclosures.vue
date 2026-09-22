@@ -23,24 +23,75 @@
                     </a>
                 </template>
             </Column>
+            <Column header="Çıkarım" style="width: 110px">
+                <template #body="{ data }">
+                    <Button
+                        v-if="isPortfolioReport(data)"
+                        label="Çıkar"
+                        icon="pi pi-sparkles"
+                        size="small"
+                        severity="help"
+                        text
+                        :loading="extracting.has(data.disclosure_index)"
+                        :disabled="extracting.size > 0"
+                        @click="extract(data)"
+                    />
+                </template>
+            </Column>
         </DataTable>
         <template #footer>
             <Pagination :links="disclosures.links" />
         </template>
+        <Toast />
     </AdminPage>
 </template>
 
 <script setup>
+import { ref, watch } from 'vue';
+import { router, usePage } from '@inertiajs/vue3';
+import { useToast } from 'primevue/usetoast';
 import AdminPage from '@/Components/AdminPage.vue';
 import Pagination from '@/Components/Pagination.vue';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
 import Tag from 'primevue/tag';
+import Toast from 'primevue/toast';
 import { useDebouncedSearch } from '@/Composables/useSearch';
+
+const PORTFOLIO_SUBJECT = 'Portföy Dağılım Raporu';
 
 const props = defineProps({ disclosures: Object, filters: Object });
 const { search, onSearch } = useDebouncedSearch(props.filters?.search);
 
+const page = usePage();
+const toast = useToast();
+const extracting = ref(new Set());
+
 const formatDate = (d) => d ? new Date(d).toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+const isPortfolioReport = (row) => (row.subject || '').trim() === PORTFOLIO_SUBJECT;
+
+// Reading a PDF with Haiku takes a while; the button shows a spinner and other
+// rows are disabled until it returns, so a run cannot be double-fired.
+function extract(row) {
+    const id = row.disclosure_index;
+    extracting.value = new Set(extracting.value).add(id);
+
+    router.post(`/admin/fund-disclosures/${id}/extract`, {}, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+            const next = new Set(extracting.value);
+            next.delete(id);
+            extracting.value = next;
+        },
+    });
+}
+
+watch(() => page.props.flash, (flash) => {
+    if (flash?.message) {
+        toast.add({ severity: flash.type ?? 'info', summary: 'Çıkarım', detail: flash.message, life: 6000 });
+    }
+});
 </script>

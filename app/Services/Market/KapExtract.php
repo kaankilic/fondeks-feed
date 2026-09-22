@@ -57,6 +57,30 @@ PROMPT;
         return preg_match('/^pdr-(\d+)$/', $customId, $m) ? (int) $m[1] : null;
     }
 
+    /** Turkish "Temmuz-2026" (or "Temmuz 2026") to the period key "2026-07-01". */
+    public static function periodFromLabel(?string $label): ?string
+    {
+        if (!$label) {
+            return null;
+        }
+
+        $months = [
+            'ocak' => '01', 'şubat' => '02', 'subat' => '02', 'mart' => '03',
+            'nisan' => '04', 'mayıs' => '05', 'mayis' => '05', 'haziran' => '06',
+            'temmuz' => '07', 'ağustos' => '08', 'agustos' => '08', 'eylül' => '09',
+            'eylul' => '09', 'ekim' => '10', 'kasım' => '11', 'kasim' => '11',
+            'aralık' => '12', 'aralik' => '12',
+        ];
+
+        if (!preg_match('/(\p{L}+)\D+(\d{4})/u', trim($label), $m)) {
+            return null;
+        }
+
+        $month = $months[mb_strtolower($m[1], 'UTF-8')] ?? null;
+
+        return $month ? "{$m[2]}-{$month}-01" : null;
+    }
+
     private function outputSchema(): array
     {
         return [
@@ -149,6 +173,51 @@ PROMPT;
         $response->throw();
         $batch = $response->json();
         return ['id' => $batch['id'], 'status' => $batch['processing_status']];
+    }
+
+    /**
+     * One report extracted synchronously (a plain Messages call, not a batch),
+     * for on-demand runs from the admin panel. Same model, prompt and schema as
+     * the batch path. Returns ['ok'=>bool, 'extraction'=>array|null, 'error'=>?].
+     */
+    public function extractOne(array $report, string $pdf): array
+    {
+        $params = $this->buildExtractionRequest($report, $pdf)['params'];
+
+        $response = $this->client()->post(self::API_BASE . '/messages', $params);
+        $response->throw();
+
+        return $this->readMessage($response->json());
+    }
+
+    /** Parses a single Messages response the way readResult() parses a batch one. */
+    private function readMessage(array $message): array
+    {
+        $stop = $message['stop_reason'] ?? null;
+        if ($stop === 'max_tokens') {
+            return ['ok' => false, 'error' => 'response hit max_tokens'];
+        }
+        if ($stop === 'refusal') {
+            return ['ok' => false, 'error' => 'model declined the request'];
+        }
+
+        $text = '';
+        foreach (($message['content'] ?? []) as $block) {
+            if (($block['type'] ?? '') === 'text') {
+                $text .= $block['text'];
+            }
+        }
+
+        if (trim($text) === '') {
+            return ['ok' => false, 'error' => 'empty response'];
+        }
+
+        $payload = json_decode($text, true);
+        if ($payload === null) {
+            return ['ok' => false, 'error' => 'unparseable JSON: ' . mb_substr($text, 0, 200)];
+        }
+
+        return ['ok' => true, 'extraction' => $payload];
     }
 
     public function batchStatus(string $batchId): array

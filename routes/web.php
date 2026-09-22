@@ -25,6 +25,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/fund-similarities', [Admin\FundSimilarityController::class, 'index'])->name('fund-similarities');
     Route::get('/fund-holding-snapshots', [Admin\FundHoldingSnapshotController::class, 'index'])->name('fund-holding-snapshots');
     Route::get('/fund-disclosures', [Admin\FundDisclosureController::class, 'index'])->name('fund-disclosures');
+    Route::post('/fund-disclosures/{index}/extract', [Admin\FundDisclosureController::class, 'extract'])->name('fund-disclosures.extract');
     Route::get('/market-indices', [Admin\MarketIndexController::class, 'index'])->name('market-indices');
     Route::get('/index-quotes', [Admin\IndexQuoteController::class, 'index'])->name('index-quotes');
     Route::get('/kap-portfolio-reports', [Admin\KapPortfolioReportController::class, 'index'])->name('kap-portfolio-reports');
