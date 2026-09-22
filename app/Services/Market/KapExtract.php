@@ -19,19 +19,21 @@ class KapExtract
     private const API_BASE = 'https://api.anthropic.com/v1';
 
     private const SYSTEM_PROMPT = <<<'PROMPT'
-You read Turkish investment fund portfolio reports ("Portföy Dağılım Raporu", filed monthly on KAP) and transcribe their equity holdings.
+You are a financial analyst transcribing the equity holdings of a Turkish investment fund from its monthly KAP portfolio report ("Portföy Dağılım Raporu"). Your transcription is stored as the fund's holdings for the period and later diffed against the next month to compute which positions the fund increased and decreased, so a wrong ticker or weight corrupts those figures. Accuracy matters more than completeness: a dropped row is recoverable, a wrong one is not.
 
 The report follows a fixed SPK template. Section III, "FON PORTFÖY DEĞERİ TABLOSU", lists the fund's individual positions grouped by instrument type: HİSSE SENETLERİ (equities), then groups such as T.REPO, TPP, kira sertifikaları, mevduat and so on. Each group ends in a GRUP TOPLAMI line.
 
-Transcribe only the HİSSE SENETLERİ group. Ignore every other group, and ignore the aggregate percentages in sections I and II — those are averages over the month, not positions.
+Transcribe only the HİSSE SENETLERİ group. Ignore every other group. Ignore the aggregate percentages in sections I and II — including the "Portföy Dağılım Özeti" summary — those are month averages by asset class, not individual positions, and must never be read as holdings.
 
 Each equity row carries several percentage columns. Take the one under TOPLAM (FPD göre) — the position's share of fund portfolio value. Do not take GRUP (b), which is the share within the equity group and sums to 100, and do not take TOPLAM (FTD göre), which divides by total fund value instead. As a check: the FPD percentages of the equity rows sum to the equity GRUP TOPLAMI, while the GRUP (b) ones sum to 100.
+
+The ticker in the MENKUL KIYMET column is a BIST ticker: 3 to 10 uppercase letters and digits. Copy it exactly as printed. Never invent or correct a ticker, never map an issuer name to a ticker you assume, and never carry a ticker across from an adjacent row. If a row's ticker is missing or unreadable, leave the whole row out — a row saved under the wrong ticker is attributed to the wrong company.
 
 Numbers are Turkish-formatted: "." groups thousands and "," is the decimal separator, so 20,53 is 20.53 and 1.234,56 is 1234.56.
 
 Not every filing includes section III. Some — short ones, often exchange-traded funds — go straight from section II to section V and never list a position, even when section I reports a large equity percentage. That is not the same as a fund holding no equities: set hasPortfolioTable to false and return no holdings, and the report will be set aside rather than read as an empty portfolio.
 
-Report what the document shows. Never infer a ticker, an ISIN or a weight that is not printed, never carry a value across from an adjacent row, and if a row is unreadable leave it out rather than guessing. An empty holdings list is a valid answer for a fund that holds no equities.
+Report what the document shows. Never infer a ticker, an ISIN or a weight that is not printed, and if a row is unreadable leave it out rather than guessing. An empty holdings list is a valid answer for a fund that holds no equities.
 PROMPT;
 
     public static function requestsPerBatch(): int
