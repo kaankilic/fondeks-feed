@@ -27,6 +27,8 @@ Transcribe only the HİSSE SENETLERİ group. Ignore every other group. Ignore th
 
 Each equity row carries several percentage columns. Take the one under TOPLAM (FPD göre) — the position's share of fund portfolio value. Do not take GRUP (b), which is the share within the equity group and sums to 100, and do not take TOPLAM (FTD göre), which divides by total fund value instead. As a check: the FPD percentages of the equity rows sum to the equity GRUP TOPLAMI, while the GRUP (b) ones sum to 100.
 
+The GRUP TOPLAMI line and every equity row print these percentages in a fixed left-to-right order: GRUP (b) first (it reads 100,00 on the GRUP TOPLAMI line), then TOPLAM (FPD göre), then TOPLAM (FTD göre). Always take the middle value. This applies to equityGroupWeight too — read it from the FPD göre column of the HİSSE SENETLERİ GRUP TOPLAMI line, never the FTD göre column immediately after it. Reading it from the FTD göre column instead makes the group total disagree with the rows and the whole extraction is discarded.
+
 The ticker in the MENKUL KIYMET column is a BIST ticker: 3 to 10 uppercase letters and digits. Copy it exactly as printed. Never invent or correct a ticker, never map an issuer name to a ticker you assume, and never carry a ticker across from an adjacent row. If a row's ticker is missing or unreadable, leave the whole row out — a row saved under the wrong ticker is attributed to the wrong company.
 
 Numbers are Turkish-formatted: "." groups thousands and "," is the decimal separator, so 20,53 is 20.53 and 1.234,56 is 1234.56.
@@ -91,7 +93,7 @@ PROMPT;
                     'fundCode' => ['type' => ['string', 'null'], 'description' => 'Fund code printed in the report header, e.g. "BHE".'],
                     'hasPortfolioTable' => ['type' => 'boolean', 'description' => 'True only if section III, "FON PORTFÖY DEĞERİ TABLOSU", is actually present.'],
                     'periodLabel' => ['type' => ['string', 'null'], 'description' => 'Reporting month as printed, e.g. "Temmuz-2026".'],
-                    'equityGroupWeight' => ['type' => ['number', 'null'], 'description' => 'GRUP TOPLAMI for the HİSSE SENETLERİ group on the TOPLAM (FPD göre) basis. Null if none.'],
+                    'equityGroupWeight' => ['type' => ['number', 'null'], 'description' => 'GRUP TOPLAMI for the HİSSE SENETLERİ group, read from the TOPLAM (FPD göre) column — the middle of the three trailing percentages (GRUP (b) 100,00, then FPD göre, then FTD göre), NOT the last (FTD göre) one. Same column the row weights use. Null if none.'],
                     'holdings' => [
                         'type' => 'array',
                         'description' => 'One entry per equity row. Empty when the fund holds no equities.',
