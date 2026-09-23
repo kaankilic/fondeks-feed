@@ -764,12 +764,14 @@ class HoldingsJobs
                 'period' => '',
             ];
 
-            $outcome = $this->extract->extractOne($report, $pdf);
+            // Haiku first; escalate to a larger-context model when the PDF is
+            // too big for it or the transcription fails reconciliation.
+            $outcome = $this->extract->extractValidated($report, $pdf);
             if (!$outcome['ok']) {
                 throw new \RuntimeException($outcome['error']);
             }
 
-            $checked = $this->extract->validateExtraction($outcome['extraction'], $report);
+            $checked = $outcome['checked'];
             if ($checked['missingTable']) {
                 throw new \RuntimeException('raporda hisse tablosu (bölüm III) yok');
             }
@@ -798,6 +800,8 @@ class HoldingsJobs
                 'holdings' => count($checked['holdings']),
                 'movers' => $positions['rowsWritten'] ?? 0,
                 'warnings' => $checked['warnings'],
+                'model' => $outcome['model'],
+                'escalated' => $outcome['escalated'],
             ];
         });
     }

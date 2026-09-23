@@ -13,6 +13,16 @@ use Illuminate\Support\Facades\Http;
 class KapExtract
 {
     public const MODEL = 'claude-haiku-4-5-20251001';
+
+    /**
+     * Fallback for reports the cheap model can't handle: a filing whose PDF
+     * overflows Haiku's 200K context (large fund-of-funds run to dozens of
+     * pages), or a dense percentage table Haiku transcribes off the wrong
+     * column so the reconciliation check rejects it. Sonnet 5's 1M window
+     * fits the largest filings and reads the columns far more reliably.
+     */
+    public const MODEL_FALLBACK = 'claude-sonnet-5';
+
     private const MAX_TOKENS = 8000;
     private const EQUITY_TOTAL_TOLERANCE = 1.0;
     private const TICKER_PATTERN = '/^[A-Z0-9]{3,10}$/';
@@ -178,17 +188,76 @@ PROMPT;
 
     /**
      * One report extracted synchronously (a plain Messages call, not a batch),
-     * for on-demand runs from the admin panel. Same model, prompt and schema as
-     * the batch path. Returns ['ok'=>bool, 'extraction'=>array|null, 'error'=>?].
+     * for on-demand runs from the admin panel. Same prompt and schema as the
+     * batch path; $model overrides the default (used to escalate to a stronger
+     * model). Returns ['ok'=>bool, 'extraction'=>array|null, 'error'=>?]. HTTP
+     * failures — including a PDF that overflows the model's context — come back
+     * as ok=false rather than throwing, so the caller can escalate.
      */
-    public function extractOne(array $report, string $pdf): array
+    public function extractOne(array $report, string $pdf, ?string $model = null): array
     {
         $params = $this->buildExtractionRequest($report, $pdf)['params'];
+        if ($model !== null) {
+            $params['model'] = $model;
+        }
 
         $response = $this->client()->post(self::API_BASE . '/messages', $params);
-        $response->throw();
+
+        if ($response->failed()) {
+            $message = $response->json('error.message') ?? $response->body();
+            return ['ok' => false, 'error' => 'HTTP ' . $response->status() . ': ' . mb_substr((string) $message, 0, 300)];
+        }
 
         return $this->readMessage($response->json());
+    }
+
+    /**
+     * Extract and validate one report, escalating to MODEL_FALLBACK when the
+     * cheap first pass can't handle it: either the extraction call failed (e.g.
+     * the PDF overflowed Haiku's context) or the transcription failed the
+     * reconciliation check. A missing section III table is a legitimate answer,
+     * not a failure, so it does not escalate. Returns the best attempt with the
+     * model that produced it:
+     *   ['ok'=>bool, 'checked'=>?array, 'extraction'=>?array,
+     *    'model'=>string, 'escalated'=>bool, 'error'=>?string]
+     */
+    public function extractValidated(array $report, string $pdf): array
+    {
+        $primary = $this->extractOne($report, $pdf);
+        $checked = $primary['ok'] ? $this->validateExtraction($primary['extraction'], $report) : null;
+
+        $needsEscalation = !$primary['ok'] || ($checked && $checked['rejected']);
+        if (!$needsEscalation) {
+            return [
+                'ok' => $primary['ok'],
+                'checked' => $checked,
+                'extraction' => $primary['extraction'] ?? null,
+                'model' => self::MODEL,
+                'escalated' => false,
+                'error' => $primary['error'] ?? null,
+            ];
+        }
+
+        $retry = $this->extractOne($report, $pdf, self::MODEL_FALLBACK);
+        if (!$retry['ok']) {
+            return [
+                'ok' => false,
+                'checked' => $checked,
+                'extraction' => $primary['extraction'] ?? null,
+                'model' => self::MODEL_FALLBACK,
+                'escalated' => true,
+                'error' => $retry['error'] ?? $primary['error'] ?? 'çıkarım başarısız',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'checked' => $this->validateExtraction($retry['extraction'], $report),
+            'extraction' => $retry['extraction'],
+            'model' => self::MODEL_FALLBACK,
+            'escalated' => true,
+            'error' => null,
+        ];
     }
 
     /** Parses a single Messages response the way readResult() parses a batch one. */

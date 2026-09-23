@@ -42,9 +42,11 @@ class FundDisclosureController extends Controller
             ]);
         }
 
+        $note = !empty($result['escalated']) ? " ({$result['model']} ile)" : '';
+
         return back()->with('flash', [
             'type' => 'success',
-            'message' => "{$disclosure->fund_code} ({$result['period']}): {$result['holdings']} hisse kaydedildi, {$result['movers']} hareket güncellendi.",
+            'message' => "{$disclosure->fund_code} ({$result['period']}): {$result['holdings']} hisse kaydedildi, {$result['movers']} hareket güncellendi.{$note}",
         ]);
     }
 }
