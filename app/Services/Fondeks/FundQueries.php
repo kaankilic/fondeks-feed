@@ -49,6 +49,9 @@ class FundQueries
     /** How many peers the head-to-head table compares against. */
     private const COMPARE_PEERS = 2;
 
+    /** How many allocation-similar peers the detail bundle lists. */
+    private const SIMILAR_PEERS = 6;
+
     /** How many movers each of the two position panels lists. */
     private const MOVERS_PER_PANEL = 5;
 
@@ -360,34 +363,55 @@ class FundQueries
             [$fund['code'], $fund['code']],
         ));
 
-        $peerRows = DB::select(
-            'select fs.peer_code as code, fs.peer_label as label, f.name as name,
-                    fo.initials as initials, fo.color as color,
-                    fs.similarity as similarity, f.risk as risk
-             from fund_similarities fs
-             inner join funds f on fs.peer_code = f.code
-             left join founders fo on f.founder = fo.name
-             where fs.fund_code = ?
-             order by fs.similarity desc',
-            [$fund['code']],
-        );
-
         $everyFund = $this->getFunds();
         $returnsByCode = [];
         foreach ($everyFund as $row) {
             $returnsByCode[$row['code']] = $row;
         }
 
-        $similar = array_map(fn ($peer) => [
-            'code' => $peer->code,
-            'slug' => Slug::fundSlug($peer->code, $peer->name),
-            'label' => $peer->label ?? $peer->name,
-            'initials' => $peer->initials ?? Palette::FALLBACK_INITIALS,
-            'color' => $peer->color ?? Palette::FALLBACK_BACKGROUND,
-            'similarity' => Num::json($peer->similarity),
-            'y1' => $returnsByCode[$peer->code]['y1'] ?? 0,
-            'risk' => $peer->risk === null ? null : (int) $peer->risk,
-        ], $peerRows);
+        // Similar funds by asset allocation (Varlık Dağılımı): rank peers by how
+        // much of their latest allocation overlaps this fund's — the sum, over
+        // asset classes, of the smaller of the two weights. That is 100 for an
+        // identical split and 0 for two funds with nothing in common. Only funds
+        // in the product list are eligible, so peers match what the site shows.
+        $allocationsByFund = $this->latestAllocationsByFund();
+        $self = $allocationsByFund[$fund['code']] ?? [];
+
+        $overlaps = [];
+        foreach ($self === [] ? [] : $allocationsByFund as $peerCode => $peerAllocation) {
+            if ($peerCode === $fund['code'] || ! isset($returnsByCode[$peerCode])) {
+                continue;
+            }
+
+            $overlap = 0.0;
+            foreach ($self as $label => $pct) {
+                if (isset($peerAllocation[$label])) {
+                    $overlap += min($pct, $peerAllocation[$label]);
+                }
+            }
+
+            if ($overlap > 0) {
+                $overlaps[$peerCode] = $overlap;
+            }
+        }
+
+        arsort($overlaps);
+        $overlaps = array_slice($overlaps, 0, self::SIMILAR_PEERS, true);
+
+        $similar = [];
+        foreach ($overlaps as $peerCode => $overlap) {
+            $peer = $returnsByCode[$peerCode];
+            $similar[] = [
+                'code' => $peer['code'],
+                'slug' => $peer['slug'],
+                'label' => $peer['name'],
+                'initials' => $peer['founderInitials'],
+                'color' => $peer['founderColor'],
+                'similarity' => Num::json(round($overlap)),
+                'y1' => $peer['y1'] ?? 0,
+                'risk' => $peer['risk'],
+            ];
+        }
 
         $compareCodes = array_merge(
             [$fund['code']],
@@ -652,6 +676,33 @@ class FundQueries
      * so a {@see flush()} makes every prior entry unreachable at once. A `null`
      * result is not stored, so a not-yet-known fund keeps missing cheaply.
      */
+    /**
+     * Every fund's most recent asset allocation as [fundCode => [label => pct]].
+     * Cached with the rest of the read layer; used to rank similar funds by how
+     * closely their Varlık Dağılımı matches.
+     */
+    private function latestAllocationsByFund(): array
+    {
+        return $this->remember('allocations:latest', function () {
+            $rows = DB::select(
+                'select fa.fund_code, fa.label, fa.pct
+                   from fund_allocations fa
+                   inner join (
+                       select fund_code, max(date) as date
+                         from fund_allocations
+                        group by fund_code
+                   ) latest on latest.fund_code = fa.fund_code and latest.date = fa.date',
+            );
+
+            $byFund = [];
+            foreach ($rows as $row) {
+                $byFund[$row->fund_code][$row->label] = (float) $row->pct;
+            }
+
+            return $byFund;
+        });
+    }
+
     private function remember(string $key, callable $callback): mixed
     {
         $version = $this->cacheGeneration();
