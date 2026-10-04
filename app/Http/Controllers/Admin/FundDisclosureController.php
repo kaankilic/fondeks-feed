@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\Ingest\ExtractDisclosureJob;
 use App\Models\FundDisclosure;
-use App\Services\Ingest\HoldingsJobs;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -28,25 +28,21 @@ class FundDisclosureController extends Controller
         ]);
     }
 
-    /** Extract one Portföy Dağılım Raporu disclosure's holdings with Haiku, on demand. */
-    public function extract(int $index, HoldingsJobs $holdings)
+    /**
+     * Queue the on-demand extraction of one Portföy Dağılım Raporu disclosure.
+     * The job reads the PDF, writes the holdings snapshot and rebuilds that
+     * period's movers on the serialized KAP worker; its outcome and any failure
+     * are recorded on the kap-extract-ondemand ingest run.
+     */
+    public function extract(int $index)
     {
         $disclosure = FundDisclosure::where('disclosure_index', $index)->firstOrFail();
 
-        try {
-            $result = $holdings->extractDisclosureNow($disclosure->disclosure_index);
-        } catch (\Throwable $e) {
-            return back()->with('flash', [
-                'type' => 'error',
-                'message' => "{$disclosure->fund_code}: çıkarım başarısız — {$e->getMessage()}",
-            ]);
-        }
-
-        $note = !empty($result['escalated']) ? " ({$result['model']} ile)" : '';
+        ExtractDisclosureJob::dispatch($disclosure->disclosure_index);
 
         return back()->with('flash', [
             'type' => 'success',
-            'message' => "{$disclosure->fund_code} ({$result['period']}): {$result['holdings']} hisse kaydedildi, {$result['movers']} hareket güncellendi.{$note}",
+            'message' => "{$disclosure->fund_code}: çıkarım kuyruğa alındı, arka planda işlenecek.",
         ]);
     }
 }
