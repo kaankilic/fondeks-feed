@@ -394,7 +394,6 @@ PROMPT;
     public function validateExtraction(array $extraction, array $report): array
     {
         $warnings = [];
-        $seen = [];
         $holdings = [];
 
         $fundCode = $extraction['fundCode'] ?? null;
@@ -407,8 +406,17 @@ PROMPT;
             return ['holdings' => [], 'rejected' => false, 'missingTable' => true, 'warnings' => $warnings];
         }
 
+        // A fund reports one row per lot, so a ticker can appear several times —
+        // including negative-weight rows that offset an earlier lot (a partial
+        // sale settling on a different day). The real position is the net sum of
+        // a ticker's lots, so aggregate repeats instead of dropping them, and
+        // keep the negative rows in the sum rather than discarding them.
+        $byTicker = [];
         foreach (($extraction['holdings'] ?? []) as $holding) {
-            $ticker = preg_replace('/\.$/', '', strtoupper(trim($holding['ticker'] ?? '')));
+            // Strip any market/line suffix ("DMLKT.G") to the base BIST ticker
+            // that symbols are keyed by: resolve it to the symbol and use it
+            // rather than dropping the row.
+            $ticker = preg_replace('/\..*$/', '', strtoupper(trim($holding['ticker'] ?? '')));
 
             if (!preg_match(self::TICKER_PATTERN, $ticker)) {
                 $warnings[] = 'dropped unusable ticker ' . json_encode($holding['ticker'] ?? null);
@@ -416,22 +424,44 @@ PROMPT;
             }
 
             $weight = $holding['weight'] ?? null;
-            if (!is_numeric($weight) || $weight < 0 || $weight > 100) {
+            if (!is_numeric($weight) || abs($weight) > 100) {
                 $warnings[] = "dropped {$ticker}: weight {$weight} out of range";
                 continue;
             }
 
-            if (isset($seen[$ticker])) {
-                $warnings[] = "dropped duplicate row for {$ticker}";
+            if (!isset($byTicker[$ticker])) {
+                $byTicker[$ticker] = ['ticker' => $ticker, 'name' => '', 'isin' => null, 'weight' => 0.0];
+            }
+            $byTicker[$ticker]['weight'] += (float) $weight;
+            // Keep the first name and ISIN a lot carries.
+            if ($byTicker[$ticker]['name'] === '' && trim($holding['name'] ?? '') !== '') {
+                $byTicker[$ticker]['name'] = trim($holding['name']);
+            }
+            if ($byTicker[$ticker]['isin'] === null && ($holding['isin'] ?? null) !== null) {
+                $byTicker[$ticker]['isin'] = $holding['isin'];
+            }
+        }
+
+        foreach ($byTicker as $ticker => $position) {
+            $net = round($position['weight'], 2);
+
+            // Lots that net to zero or less are not a live position.
+            if ($net <= 0) {
+                if ($net < 0) {
+                    $warnings[] = "dropped {$ticker}: lots net to " . number_format($net, 2) . '%';
+                }
+                continue;
+            }
+            if ($net > 100) {
+                $warnings[] = "dropped {$ticker}: net weight " . number_format($net, 2) . '% out of range';
                 continue;
             }
 
-            $seen[$ticker] = true;
             $holdings[] = [
                 'ticker' => $ticker,
-                'name' => trim($holding['name'] ?? '') ?: $ticker,
-                'isin' => $holding['isin'] ?? null,
-                'weight' => (float) $weight,
+                'name' => $position['name'] ?: $ticker,
+                'isin' => $position['isin'],
+                'weight' => $net,
             ];
         }
 
