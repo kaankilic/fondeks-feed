@@ -626,8 +626,15 @@ class HoldingsJobs
 
             $byFund = [];
 
+            // Diff every fund that holds equities this period against its
+            // previous snapshot. A fund with no previous snapshot is appearing
+            // for the first time, so its baseline is empty and each position
+            // reads as an increase from zero — that is how a fund's opening
+            // portfolio surfaces in the movers. (The sold-out pass below stays
+            // gated on a prior snapshot, so a fund that simply was not filed last
+            // period is never shown as wholesale decreased.)
             foreach ($current as $row) {
-                if (!$known->has($row->ticker) || !isset($comparable[$row->fund_code])) {
+                if (!$known->has($row->ticker)) {
                     continue;
                 }
                 $previousWeight = $baseline["{$row->fund_code}:{$row->ticker}"] ?? 0;
