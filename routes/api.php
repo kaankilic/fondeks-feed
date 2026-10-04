@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FundController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\LeaderController;
+use App\Http\Controllers\Api\SymbolController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -21,6 +22,9 @@ Route::get('/funds/search', [FundController::class, 'search']);
 Route::get('/funds/{code}', [FundController::class, 'show']);
 
 Route::get('/leaders', [LeaderController::class, 'index']);
+
+// Proxied BIST ticker logo (Forinvest CDN), served from our own origin.
+Route::get('/symbols/{code}/icon', [SymbolController::class, 'icon']);
 
 // ── Sanctum-protected surface ────────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);

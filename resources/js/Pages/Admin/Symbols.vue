@@ -4,6 +4,17 @@
             <InputText v-model="search" placeholder="Ticker veya ad ara..." class="w-64" @input="onSearch" />
         </template>
         <DataTable :value="symbols.data" :rows="25" stripedRows size="small">
+            <Column header="İkon" style="width: 56px">
+                <template #body="{ data }">
+                    <img
+                        :src="`/api/symbols/${data.ticker}/icon`"
+                        :alt="data.ticker"
+                        class="h-6 w-6 rounded object-contain"
+                        loading="lazy"
+                        @error="(e) => (e.target.style.visibility = 'hidden')"
+                    />
+                </template>
+            </Column>
             <Column field="ticker" header="Ticker" sortable style="width: 100px" />
             <Column field="name" header="Ad" sortable />
             <Column field="color" header="Renk">

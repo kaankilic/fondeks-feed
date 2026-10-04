@@ -286,6 +286,7 @@ class FundQueries
     {
         return DB::select(
             'select
+                p.ticker                   as ticker,
                 coalesce(s.name, p.ticker) as label,
                 s.color                    as color,
                 p.weight                   as weight,
@@ -323,6 +324,7 @@ class FundQueries
                 where fund_code = ? and date = (select at from baseline)
             )
             select
+                null::text                              as ticker,
                 coalesce(c.label, e.label)              as label,
                 null::text                              as color,
                 coalesce(c.pct, 0)                      as weight,
@@ -494,6 +496,7 @@ class FundQueries
         $shed = array_reverse(array_values(array_filter($moves, fn ($row) => (float) $row->change < 0)));
 
         $toHolding = fn ($row, $index) => [
+            'ticker' => $row->ticker ?? null,
             'label' => $row->label,
             'color' => $row->color ?? Palette::allocationColor($index),
             'weight' => Num::json($row->weight),

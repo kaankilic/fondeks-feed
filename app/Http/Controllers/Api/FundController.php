@@ -171,9 +171,35 @@ class FundController extends Controller
 
         if (in_array('detail', $include, true)) {
             $payload = array_merge($payload, $this->funds->getFundDetail($resolved, $fund));
+            $payload['increased'] = $this->withIcons($payload['increased']);
+            $payload['decreased'] = $this->withIcons($payload['decreased']);
         }
 
         return $this->cached($payload);
+    }
+
+    /** Adds the proxied logo URL to each mover that carries a ticker. */
+    private function withIcons(array $holdings): array
+    {
+        return array_map(function (array $holding) {
+            $ticker = $holding['ticker'] ?? null;
+            $holding['icon'] = $ticker ? $this->iconUrl($ticker) : null;
+
+            return $holding;
+        }, $holdings);
+    }
+
+    /**
+     * Absolute URL of the ticker's logo on this API's own origin, honouring both
+     * mounts: the api.* subdomain (no prefix) and the same-origin /api prefix.
+     */
+    private function iconUrl(string $ticker): string
+    {
+        $apiDomain = config('app.api_domain');
+        $onSubdomain = $apiDomain && request()->getHost() === $apiDomain;
+        $prefix = $onSubdomain ? '' : '/api';
+
+        return url($prefix . '/symbols/' . rawurlencode($ticker) . '/icon');
     }
 
     /** An integer within [min, max]: null when absent, false when invalid. */
