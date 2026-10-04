@@ -46,4 +46,12 @@ return [
         'auth_token' => env('ANTHROPIC_AUTH_TOKEN', ''),
         'max_retries' => (int) env('ANTHROPIC_MAX_RETRIES', 3),
     ],
+
+    // poppler's pdftotext, used to turn a report PDF into column-aligned text
+    // before extraction. Prefer an absolute path in production so the binary is
+    // not resolved through a mutable PATH.
+    'pdftotext' => [
+        'bin' => env('PDFTOTEXT_PATH', 'pdftotext'),
+        'timeout' => (int) env('PDFTOTEXT_TIMEOUT', 60),
+    ],
 ];

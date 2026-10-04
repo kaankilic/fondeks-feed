@@ -4,6 +4,7 @@ namespace App\Services\Ingest;
 
 use App\Services\Market\KapClient;
 use App\Services\Market\KapExtract;
+use App\Services\Market\PdfText;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -35,6 +36,7 @@ class HoldingsJobs
         private JobLockService $lock = new JobLockService(),
         private KapClient $kap = new KapClient(),
         private KapExtract $extract = new KapExtract(),
+        private PdfText $pdfText = new PdfText(),
     ) {}
 
     /* ── Date helpers ──────────────────────────────────────────────────── */
@@ -298,16 +300,16 @@ class HoldingsJobs
                     continue;
                 }
                 try {
-                    $pdf = $this->reportPdf($row);
+                    $text = $this->reportText($row);
                 } catch (\Throwable $e) {
                     $this->markReport($row->disclosure_index, ['status' => 'failed', 'note' => mb_substr($e->getMessage(), 0, 1000)]);
                     continue;
                 }
-                if (!$pdf) {
+                if ($text === null) {
                     $this->markReport($row->disclosure_index, ['status' => 'failed', 'note' => 'filing carries no PDF attachment']);
                     continue;
                 }
-                $requests[] = $this->extract->buildExtractionRequest($this->toPortfolioReport($row), $pdf);
+                $requests[] = $this->extract->buildExtractionRequest($this->toPortfolioReport($row), $text);
             }
 
             if (empty($requests)) {
@@ -360,6 +362,22 @@ class HoldingsJobs
         ]);
 
         return $this->kap->fetchDocumentPdf($document, $row->disclosure_index);
+    }
+
+    /**
+     * The report as column-aligned text: fetch the PDF and run it through
+     * pdftotext in memory. Returns null when the filing has no attachment;
+     * throws when the PDF can't be fetched or converted. The PDF is never kept
+     * or sent onward — only its text leaves this method.
+     */
+    private function reportText(object $row): ?string
+    {
+        $pdf = $this->reportPdf($row);
+        if (!$pdf) {
+            return null;
+        }
+
+        return $this->pdfText->toLayoutText($pdf);
     }
 
     private function toPortfolioReport(object $row): array
@@ -418,7 +436,7 @@ class HoldingsJobs
                     }
 
                     try {
-                        $pdf = $this->reportPdf($row);
+                        $text = $this->reportText($row);
                     } catch (\Throwable $e) {
                         $this->markReport($row->disclosure_index, [
                             'status' => 'failed',
@@ -427,7 +445,7 @@ class HoldingsJobs
                         continue;
                     }
 
-                    if (!$pdf) {
+                    if ($text === null) {
                         $this->markReport($row->disclosure_index, [
                             'status' => 'failed',
                             'note' => 'filing carries no PDF attachment',
@@ -435,7 +453,7 @@ class HoldingsJobs
                         continue;
                     }
 
-                    $requests[] = $this->extract->buildExtractionRequest($this->toPortfolioReport($row), $pdf);
+                    $requests[] = $this->extract->buildExtractionRequest($this->toPortfolioReport($row), $text);
                 }
 
                 if (empty($requests)) {
@@ -772,7 +790,11 @@ class HoldingsJobs
                 throw new \RuntimeException('bildirimde PDF eki bulunamadı');
             }
 
-            $pdf = $this->kap->fetchDocumentPdf($document, $disclosureIndex);
+            // Convert the PDF to column-aligned text in memory; the PDF itself
+            // is never sent to the model, only this text.
+            $reportText = $this->pdfText->toLayoutText(
+                $this->kap->fetchDocumentPdf($document, $disclosureIndex)
+            );
 
             $report = [
                 'disclosureIndex' => $disclosureIndex,
@@ -781,9 +803,9 @@ class HoldingsJobs
                 'period' => '',
             ];
 
-            // Haiku first; escalate to a larger-context model when the PDF is
-            // too big for it or the transcription fails reconciliation.
-            $outcome = $this->extract->extractValidated($report, $pdf);
+            // Haiku first; escalate to a stronger model when the transcription
+            // fails reconciliation.
+            $outcome = $this->extract->extractValidated($report, $reportText);
             if (!$outcome['ok']) {
                 throw new \RuntimeException($outcome['error']);
             }

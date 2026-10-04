@@ -27,8 +27,15 @@ tasks:
     - run: 'cd {{release_or_current_path}} && corepack yarn install --frozen-lockfile 2>&1 && corepack yarn build 2>&1'
   artisan:migrate:
     - run: 'echo "Skipping migrations — using existing database"'
+  # Report extraction converts the PDF to text with poppler's pdftotext before
+  # sending it to the model. Install it once if missing; a no-op thereafter.
+  deploy:poppler:
+    - run: 'command -v pdftotext >/dev/null 2>&1 || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq poppler-utils; }'
 
 after:
   deploy:vendors: deploy:assets
   deploy:symlink: artisan:horizon:terminate
   deploy:failed: deploy:unlock
+
+before:
+  deploy:symlink: deploy:poppler
