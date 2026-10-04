@@ -60,6 +60,16 @@ class HoldingsJobs
         return gmdate('Y-m-d', strtotime("{$day} +{$days} days"));
     }
 
+    /** The report period encoded in a KAP attachment name like "SD1 2026.09.pdf". */
+    public static function periodFromPdfName(?string $name): ?string
+    {
+        if ($name && preg_match('/(\d{4})\.(\d{2})/', $name, $m) && (int) $m[2] >= 1 && (int) $m[2] <= 12) {
+            return "{$m[1]}-{$m[2]}-01";
+        }
+
+        return null;
+    }
+
     /** From the day the period closes until the window shuts, never past today. */
     public function reportingWindow(string $period): array
     {
@@ -779,9 +789,12 @@ class HoldingsJobs
                 throw new \RuntimeException('doğrulama başarısız: ' . implode('; ', $checked['warnings']));
             }
 
-            // The report states its own period; fall back to the month before
-            // publication, which is when a monthly report is normally filed.
-            $period = KapExtract::periodFromLabel($outcome['extraction']['periodLabel'] ?? null)
+            // The attachment name carries the report's own period ("SD1
+            // 2026.09.pdf"); trust it over the model, which can mistake the
+            // fund's inception date (Kuruluş Tarihi) for the reporting month.
+            // Fall back to the month before publication, when a monthly report
+            // is normally filed.
+            $period = self::periodFromPdfName($disclosure->pdf_name)
                 ?? self::previousPeriod(self::periodOf((string) $disclosure->published_at));
 
             $written = $this->applyExtractedHoldings(
