@@ -2,7 +2,9 @@
 
 namespace App\Services\Ingest;
 
+use App\Jobs\Ingest\ExtractDisclosureJob;
 use App\Services\Market\KapClient;
+use App\Services\Market\KapExtract;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -22,6 +24,26 @@ class DisclosuresJobs
     private function trackedFundCodes(): \Illuminate\Support\Collection
     {
         return DB::table('funds')->pluck('code')->flip();
+    }
+
+    /**
+     * Queue extraction the moment a Portföy Dağılım Raporu's PDF link is first
+     * resolved. Link resolution is a one-shot transition (pdf_url goes null ->
+     * set and the row is never re-selected), so a report auto-extracts exactly
+     * once, right after its attachment name — which the period is read from — is
+     * known. Every archived disclosure is already a tracked fund; the job
+     * re-checks that and the API key before doing any work.
+     */
+    private function autoExtractPortfolioReport(object $row): void
+    {
+        if (trim((string) $row->subject) !== KapClient::PORTFOLIO_REPORT_SUBJECT) {
+            return;
+        }
+        if (!KapExtract::isConfigured()) {
+            return;
+        }
+
+        ExtractDisclosureJob::dispatch($row->disclosure_index);
     }
 
     public function discoverDisclosures(string $from, string $to): array
@@ -100,6 +122,8 @@ class DisclosuresJobs
                     ->where('disclosure_index', $row->disclosure_index)
                     ->update(['pdf_url' => $document['url'], 'pdf_name' => $document['fileName']]);
                 $written++;
+
+                $this->autoExtractPortfolioReport($row);
             }
 
             return ['rowsRead' => $pending->count(), 'rowsWritten' => $written, 'missing' => $missing];
@@ -157,6 +181,8 @@ class DisclosuresJobs
                     ->where('disclosure_index', $row->disclosure_index)
                     ->update(['pdf_url' => $document['url'], 'pdf_name' => $document['fileName']]);
                 $written++;
+
+                $this->autoExtractPortfolioReport($row);
             }
 
             return [
