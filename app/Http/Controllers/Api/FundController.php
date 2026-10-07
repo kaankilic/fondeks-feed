@@ -38,6 +38,12 @@ class FundController extends Controller
             return $this->badRequest('invalid category');
         }
 
+        // Fund universe: YAT (default), EMK (pension) or BYF (exchange-traded).
+        $type = strtoupper((string) $request->query('type', Constants::PRODUCT_FUND_TYPE));
+        if (! in_array($type, Constants::PAGED_FUND_TYPES, true)) {
+            return $this->badRequest('type must be one of '.implode(', ', Constants::PAGED_FUND_TYPES));
+        }
+
         $minRisk = $this->intOrNull($request->query('minRisk'), Constants::RISK_MIN, Constants::RISK_MAX);
         $maxRisk = $this->intOrNull($request->query('maxRisk'), Constants::RISK_MIN, Constants::RISK_MAX);
         if ($minRisk === false || $maxRisk === false) {
@@ -71,7 +77,7 @@ class FundController extends Controller
 
         $needle = $q === null || $q === '' ? null : mb_strtolower($q, 'UTF-8');
 
-        $filtered = array_filter($this->funds->getFunds(), function ($fund) use (
+        $filtered = array_filter($this->funds->getFunds($type), function ($fund) use (
             $category, $minRisk, $maxRisk, $minReturn, $needle
         ) {
             if ($category && $fund['category'] !== $category) {
