@@ -37,6 +37,19 @@ class FounderController extends Controller
         // caller sends can redirect the request elsewhere (SSRF) or traverse.
         abort_unless(preg_match('/^[a-z0-9_]{1,64}$/', $slug), 404);
 
+        // Prefer a logo we've already downloaded and squared into public/ — it
+        // is served straight from disk, so a direct proxy hit for a stored
+        // founder never reaches the CDN. The slug is validated above, so the
+        // path is a fixed directory plus a safe segment (no traversal).
+        $local = public_path('founder-logos/'.$slug.'.png');
+        if (is_file($local)) {
+            return response()->file($local, [
+                'Cache-Control' => 'public, max-age='.(self::TTL_DAYS * 86400),
+                'X-Content-Type-Options' => 'nosniff',
+                'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+            ]);
+        }
+
         $cacheKey = "founder-icon:{$slug}";
         $icon = Cache::get($cacheKey);
 

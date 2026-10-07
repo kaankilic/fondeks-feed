@@ -35,9 +35,16 @@ class FundController extends Controller
 
         $funds = $query->orderBy('code')->paginate(25)->withQueryString();
 
-        // The list shows each fund's founder logo; a founder with no logo
-        // upstream falls back to just the name (the image 404s client-side).
+        // The list shows each fund's founder logo: the locally stored, squared
+        // file when we have one, otherwise the live Fintables proxy. A founder
+        // with neither falls back to just the name (the image 404s client-side).
         $funds->getCollection()->each(function (Fund $fund) {
+            if ($logo = Founder::storedLogo($fund->founder)) {
+                $fund->founder_logo = asset($logo);
+
+                return;
+            }
+
             $slug = Founder::logoSlugFor($fund->founder);
             $fund->founder_logo = $slug === '' ? null : url('/api/founders/'.$slug.'/icon');
         });

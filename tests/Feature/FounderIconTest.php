@@ -14,15 +14,38 @@ class FounderIconTest extends TestCase
             'storage.fintables.com/*' => Http::response('PNGDATA', 200, ['Content-Type' => 'image/png']),
         ]);
 
-        $this->get('/api/founders/pusula_portfoy/icon')
+        // A slug with no locally stored logo falls through to the CDN proxy.
+        $this->get('/api/founders/ahlatci_portfoy/icon')
             ->assertOk()
             ->assertHeader('Content-Type', 'image/png')
             ->assertSee('PNGDATA', false);
 
         // A second request is served from the cache without touching the CDN.
-        $this->get('/api/founders/pusula_portfoy/icon')->assertOk();
+        $this->get('/api/founders/ahlatci_portfoy/icon')->assertOk();
 
         Http::assertSentCount(1);
+    }
+
+    public function test_a_locally_stored_logo_is_served_from_disk_without_touching_the_cdn(): void
+    {
+        Http::fake();
+
+        $path = public_path('founder-logos/test_fixture_portfoy.png');
+        file_put_contents($path, base64_decode(
+            // 1×1 transparent PNG.
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+        ));
+
+        try {
+            $this->get('/api/founders/test_fixture_portfoy/icon')
+                ->assertOk()
+                ->assertHeader('Content-Type', 'image/png');
+        } finally {
+            @unlink($path);
+        }
+
+        // The stored file shadows the proxy entirely — the CDN is never reached.
+        Http::assertNothingSent();
     }
 
     public function test_a_missing_logo_is_negative_cached_so_the_cdn_is_not_rehit(): void

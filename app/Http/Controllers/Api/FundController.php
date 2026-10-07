@@ -220,12 +220,18 @@ class FundController extends Controller
     }
 
     /**
-     * Absolute URL of the founder's logo on this API's own origin, or null when
-     * the name yields no slug. Built request-side (not in the cached query
-     * layer) so the slug cache stays host-agnostic, like the ticker icons.
+     * Absolute URL of the founder's logo, or null when the name yields no slug.
+     * Prefers a logo we've stored locally (served straight from public/ as a
+     * static asset) and falls back to the live Fintables proxy on our own
+     * origin. Built request-side (not in the cached query layer) so the slug
+     * cache stays host-agnostic, like the ticker icons.
      */
     private function founderIconUrl(?string $name): ?string
     {
+        if ($logo = Founder::storedLogo($name)) {
+            return asset($logo);
+        }
+
         $slug = Founder::logoSlugFor($name);
 
         return $slug === '' ? null : $this->apiUrl('/founders/' . rawurlencode($slug) . '/icon');
