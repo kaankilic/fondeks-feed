@@ -7,12 +7,19 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Downloads each fund founder's (kurucu) logo from Fintables' public storage,
- * squares it onto a transparent canvas and stores it under
- * public/founder-logos, then records the stored path on the founder row. The
- * API and admin then serve the logo as a static asset from our own origin,
- * falling back to the live proxy (and finally the initials chip) for founders
- * Fintables has no logo for.
+ * Builds each fund founder's (kurucu) square logo and records it on the founder
+ * row. For every founder the source image is, in order of preference:
+ *
+ *   1. a curated original committed under resources/founder-logos/<slug>.png
+ *      (most founders — gathered from their official sites, since Fintables
+ *      only carries a handful), then
+ *   2. Fintables' public logo storage as a fallback.
+ *
+ * The source is centred on a transparent 256×256 canvas and written to
+ * public/founder-logos/<slug>.png; the public-relative path is saved on
+ * founders.logo (or null when neither source has an image). The API and admin
+ * then serve the logo as a static asset from our own origin, falling back to
+ * the initials chip when there is none.
  *
  *   php artisan founders:fetch-logos
  *   php artisan founders:fetch-logos --force   # re-square even if the file exists
@@ -70,9 +77,10 @@ class FetchFounderLogos extends Command
                 continue;
             }
 
-            $source = $this->download($slug);
+            // A curated original wins over the CDN; fall back to Fintables.
+            $source = $this->localSource($slug) ?? $this->download($slug);
             if ($source === null) {
-                // No logo upstream — clear any stale path so the UI falls back.
+                // No logo anywhere — clear any stale path so the UI falls back.
                 $this->persist($founder, null);
                 $missing++;
                 $this->line("  <fg=gray>none</>  {$founder->name}");
@@ -97,6 +105,14 @@ class FetchFounderLogos extends Command
         return self::SUCCESS;
     }
 
+    /** Bytes of the curated original committed for this founder, if any. */
+    private function localSource(string $slug): ?string
+    {
+        $path = base_path("resources/founder-logos/{$slug}.png");
+
+        return is_file($path) ? (file_get_contents($path) ?: null) : null;
+    }
+
     /** Raw image bytes from the CDN, or null when there is no usable logo. */
     private function download(string $slug): ?string
     {
@@ -116,9 +132,10 @@ class FetchFounderLogos extends Command
     }
 
     /**
-     * Centre the source image on a transparent SIZE×SIZE canvas, preserving its
-     * aspect ratio (and never upscaling past its native resolution), and write
-     * it out as a PNG. Returns false when the bytes aren't a decodable image.
+     * Centre the source image on a transparent SIZE×SIZE canvas, scaling it
+     * (aspect ratio preserved) to fill the square so small favicons don't end
+     * up as a speck in a sea of transparency, and write it out as a PNG.
+     * Returns false when the bytes aren't a decodable image.
      */
     private function square(string $bytes, string $path): bool
     {
@@ -130,7 +147,7 @@ class FetchFounderLogos extends Command
         $sw = imagesx($src);
         $sh = imagesy($src);
 
-        $scale = min(self::SIZE / $sw, self::SIZE / $sh, 1.0);
+        $scale = min(self::SIZE / $sw, self::SIZE / $sh);
         $dw = (int) max(1, round($sw * $scale));
         $dh = (int) max(1, round($sh * $scale));
         $dx = intdiv(self::SIZE - $dw, 2);

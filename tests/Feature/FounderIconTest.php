@@ -15,13 +15,13 @@ class FounderIconTest extends TestCase
         ]);
 
         // A slug with no locally stored logo falls through to the CDN proxy.
-        $this->get('/api/founders/ahlatci_portfoy/icon')
+        $this->get('/api/founders/zzz_fetch_portfoy/icon')
             ->assertOk()
             ->assertHeader('Content-Type', 'image/png')
             ->assertSee('PNGDATA', false);
 
         // A second request is served from the cache without touching the CDN.
-        $this->get('/api/founders/ahlatci_portfoy/icon')->assertOk();
+        $this->get('/api/founders/zzz_fetch_portfoy/icon')->assertOk();
 
         Http::assertSentCount(1);
     }
@@ -54,12 +54,12 @@ class FounderIconTest extends TestCase
             'storage.fintables.com/*' => Http::response('', 404),
         ]);
 
-        $this->get('/api/founders/ak_portfoy/icon')->assertNotFound();
-        $this->get('/api/founders/ak_portfoy/icon')->assertNotFound();
+        $this->get('/api/founders/zzz_miss_portfoy/icon')->assertNotFound();
+        $this->get('/api/founders/zzz_miss_portfoy/icon')->assertNotFound();
 
         // The first miss is remembered, so the second 404 never reaches the CDN.
         Http::assertSentCount(1);
-        $this->assertFalse(Cache::get('founder-icon:ak_portfoy'));
+        $this->assertFalse(Cache::get('founder-icon:zzz_miss_portfoy'));
     }
 
     public function test_an_invalid_slug_never_reaches_the_cdn(): void
