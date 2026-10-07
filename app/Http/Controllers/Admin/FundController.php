@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Founder;
 use App\Models\Fund;
 use App\Models\FundAllocation;
 use App\Models\FundDailyStat;
@@ -32,8 +33,17 @@ class FundController extends Controller
             $query->where('category', $category);
         }
 
+        $funds = $query->orderBy('code')->paginate(25)->withQueryString();
+
+        // The list shows each fund's founder logo; a founder with no logo
+        // upstream falls back to just the name (the image 404s client-side).
+        $funds->getCollection()->each(function (Fund $fund) {
+            $slug = Founder::logoSlugFor($fund->founder);
+            $fund->founder_logo = $slug === '' ? null : url('/api/founders/'.$slug.'/icon');
+        });
+
         return Inertia::render('Admin/Funds', [
-            'funds' => $query->orderBy('code')->paginate(25)->withQueryString(),
+            'funds' => $funds,
             'filters' => $request->only('search', 'category'),
         ]);
     }

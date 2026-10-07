@@ -407,6 +407,7 @@ class FundQueries
                 'code' => $peer['code'],
                 'slug' => $peer['slug'],
                 'label' => $peer['name'],
+                'founder' => $peer['founder'],
                 'initials' => $peer['founderInitials'],
                 'color' => $peer['founderColor'],
                 'similarity' => Num::json(round($overlap)),

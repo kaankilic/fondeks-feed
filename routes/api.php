@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\FounderController;
 use App\Http\Controllers\Api\FundController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\LeaderController;
@@ -25,6 +26,9 @@ Route::get('/leaders', [LeaderController::class, 'index']);
 
 // Proxied BIST ticker logo (Forinvest CDN), served from our own origin.
 Route::get('/symbols/{code}/icon', [SymbolController::class, 'icon']);
+
+// Proxied fund founder (kurucu) logo (Fintables storage), served from our own origin.
+Route::get('/founders/{slug}/icon', [FounderController::class, 'icon']);
 
 // ── Sanctum-protected surface ────────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);

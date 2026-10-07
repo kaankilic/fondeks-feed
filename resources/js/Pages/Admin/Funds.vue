@@ -16,7 +16,20 @@
                     <Link :href="`/admin/funds/${data.code}`" class="hover:underline">{{ data.name }}</Link>
                 </template>
             </Column>
-            <Column field="founder" header="Kurucu" sortable />
+            <Column field="founder" header="Kurucu" sortable>
+                <template #body="{ data }">
+                    <div class="flex items-center gap-2">
+                        <img
+                            v-if="data.founder_logo && !failed.has(data.code)"
+                            :src="data.founder_logo"
+                            :alt="data.founder"
+                            class="h-5 w-5 shrink-0 rounded object-contain"
+                            @error="failed.add(data.code)"
+                        />
+                        <span>{{ data.founder }}</span>
+                    </div>
+                </template>
+            </Column>
             <Column field="category" header="Kategori" sortable />
             <Column field="fund_type" header="Tip" style="width: 60px" />
             <Column field="management_fee" header="Yönetim Ücr.">
@@ -38,6 +51,7 @@
 </template>
 
 <script setup>
+import { ref } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import AdminPage from '@/Components/AdminPage.vue';
 import Pagination from '@/Components/Pagination.vue';
@@ -49,4 +63,7 @@ import { useDebouncedSearch } from '@/Composables/useSearch';
 
 const props = defineProps({ funds: Object, filters: Object });
 const { search, onSearch } = useDebouncedSearch(props.filters?.search);
+
+// Funds whose founder logo 404'd upstream; they show the name alone.
+const failed = ref(new Set());
 </script>

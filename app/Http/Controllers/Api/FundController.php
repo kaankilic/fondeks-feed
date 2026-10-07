@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Concerns\ApiResponses;
 use App\Http\Controllers\Controller;
+use App\Models\Founder;
 use App\Services\Fondeks\FundQueries;
 use App\Support\Fondeks\Constants;
 use App\Support\Fondeks\Slug;
@@ -117,7 +118,7 @@ class FundController extends Controller
         });
 
         return $this->cached([
-            'items' => array_slice($sorted, $offset, $limit),
+            'items' => array_map([$this, 'withFounderIcon'], array_slice($sorted, $offset, $limit)),
             'total' => count($sorted),
             'limit' => $limit,
             'offset' => $offset,
@@ -138,6 +139,7 @@ class FundController extends Controller
                 'founder' => $fund['founder'],
                 'initials' => $fund['founderInitials'],
                 'color' => $fund['founderColor'],
+                'icon' => $this->founderIconUrl($fund['founder']),
                 'category' => $fund['category'],
                 'y1' => $fund['y1'],
             ], $funds),
@@ -159,7 +161,7 @@ class FundController extends Controller
             ->filter()
             ->all();
 
-        $payload = ['fund' => $fund];
+        $payload = ['fund' => $this->withFounderIcon($fund)];
 
         if (in_array('prices', $include, true)) {
             $payload['prices'] = $this->funds->getFundPrices($fund['code']);
@@ -173,6 +175,11 @@ class FundController extends Controller
             $payload = array_merge($payload, $this->funds->getFundDetail($resolved, $fund));
             $payload['increased'] = $this->withIcons($payload['increased']);
             $payload['decreased'] = $this->withIcons($payload['decreased']);
+            $payload['similar'] = array_map(function (array $peer) {
+                $peer['icon'] = $this->founderIconUrl($peer['founder'] ?? null);
+
+                return $peer;
+            }, $payload['similar'] ?? []);
         }
 
         return $this->cached($payload);
@@ -195,11 +202,39 @@ class FundController extends Controller
      */
     private function iconUrl(string $ticker): string
     {
+        return $this->apiUrl('/symbols/' . rawurlencode($ticker) . '/icon');
+    }
+
+    /** Copies a fund onto a shape that also carries its founder's logo URL. */
+    private function withFounderIcon(array $fund): array
+    {
+        $fund['founderIcon'] = $this->founderIconUrl($fund['founder'] ?? null);
+
+        return $fund;
+    }
+
+    /**
+     * Absolute URL of the founder's logo on this API's own origin, or null when
+     * the name yields no slug. Built request-side (not in the cached query
+     * layer) so the slug cache stays host-agnostic, like the ticker icons.
+     */
+    private function founderIconUrl(?string $name): ?string
+    {
+        $slug = Founder::logoSlugFor($name);
+
+        return $slug === '' ? null : $this->apiUrl('/founders/' . rawurlencode($slug) . '/icon');
+    }
+
+    /**
+     * Prefixes a path onto this API's own origin, honouring both mounts: the
+     * api.* subdomain (no prefix) and the same-origin /api prefix.
+     */
+    private function apiUrl(string $path): string
+    {
         $apiDomain = config('app.api_domain');
         $onSubdomain = $apiDomain && request()->getHost() === $apiDomain;
-        $prefix = $onSubdomain ? '' : '/api';
 
-        return url($prefix . '/symbols/' . rawurlencode($ticker) . '/icon');
+        return url(($onSubdomain ? '' : '/api') . $path);
     }
 
     /** An integer within [min, max]: null when absent, false when invalid. */
