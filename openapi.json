@@ -42,7 +42,7 @@
                 "schema": { "$ref": "#/components/schemas/FundListResponse" },
                 "example": {
                   "items": [
-                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.387541, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6 }
+                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.387541, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } }
                   ],
                   "total": 2054,
                   "limit": 25,
@@ -123,7 +123,7 @@
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LeadersResponse" },
                 "examples": {
-                  "returns": { "summary": "type=returns", "value": { "type": "returns", "items": [ { "code": "AFT", "slug": "AFT-...", "name": "AK PORTFÖY ...", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.38, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6 } ] } },
+                  "returns": { "summary": "type=returns", "value": { "type": "returns", "items": [ { "code": "AFT", "slug": "AFT-...", "name": "AK PORTFÖY ...", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.38, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } } ] } },
                   "investors": { "summary": "type=investors", "value": { "type": "investors", "items": [ { "fund": { "code": "PHF", "name": "PİRAMİT PORTFÖY ...", "y1": 0 }, "growthPct": 128.4, "investors": 8123 } ] } }
                 }
               }
@@ -251,7 +251,7 @@
       },
       "Fund": {
         "type": "object",
-        "required": ["code", "slug", "name", "founder", "founderInitials", "founderColor", "category", "isin", "managementFee", "withholdingTax", "buyValueDays", "sellValueDays", "onTefas", "price", "priceDate", "daily", "w1", "m1", "m3", "y1", "inceptionDate", "aum", "investors", "risk"],
+        "required": ["code", "slug", "name", "founder", "founderInitials", "founderColor", "category", "isin", "managementFee", "withholdingTax", "buyValueDays", "sellValueDays", "onTefas", "price", "priceDate", "daily", "w1", "m1", "m3", "y1", "hasOneYear", "inceptionDate", "aum", "investors", "risk"],
         "properties": {
           "code": { "type": "string", "description": "TEFAS fund code." },
           "slug": { "type": "string", "description": "Canonical URL segment: CODE-fund-name." },
@@ -272,11 +272,14 @@
           "w1": { "type": "number", "description": "Trailing one week, %." },
           "m1": { "type": "number", "description": "Trailing one month, %." },
           "m3": { "type": "number", "description": "Trailing three months, %." },
-          "y1": { "type": "number", "description": "Trailing one year, %." },
+          "y1": { "type": "number", "description": "Trailing one year, %. For a fund without a full year of history (hasOneYear=false) this carries the since-inception return instead, so list rankings stay honest." },
+          "hasOneYear": { "type": "boolean", "description": "Whether a full year of price history exists. When false, y1 is a since-inception figure and should read \"Kuruluştan beri\" rather than \"1 Yıl\"." },
           "inceptionDate": { "type": ["string", "null"], "format": "date" },
           "aum": { "type": "number", "description": "Fon toplam değeri (latest month), TRY." },
           "investors": { "type": ["integer", "null"] },
-          "risk": { "type": ["integer", "null"], "minimum": 1, "maximum": 7 }
+          "risk": { "type": ["integer", "null"], "minimum": 1, "maximum": 7 },
+          "categoryPercentile": { "type": ["integer", "null"], "minimum": 0, "maximum": 100, "description": "Standing within the fund's own category over the 1-year window, 0–100 (100 = category's best). Null for sub-year funds and categories with fewer than two ranked funds. Rendered as \"İlk %{100−p}\"." },
+          "consistency": { "type": ["object", "null"], "description": "How many of the last whole years the fund beat its category median. Null until at least two comparable years of history exist.", "required": ["beaten", "years"], "properties": { "beaten": { "type": "integer", "description": "Years the fund beat its category median." }, "years": { "type": "integer", "description": "Whole years weighed." } } }
         }
       },
       "FundListResponse": {
@@ -363,13 +366,14 @@
       "FundDetailResponse": {
         "type": "object",
         "required": ["fund"],
-        "description": "Always carries `fund`. `prices`/`monthly` appear when requested via include; the detail keys (volatility, allocation, similar, increased, decreased, compare) appear when include contains `detail`.",
+        "description": "Always carries `fund`. `prices`/`monthly` appear when requested via include; the detail keys (volatility, allocation, allocationDate, similar, increased, decreased, compare) appear when include contains `detail`.",
         "properties": {
           "fund": { "$ref": "#/components/schemas/Fund" },
           "prices": { "type": "array", "items": { "$ref": "#/components/schemas/PricePoint" } },
           "monthly": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyStat" } },
           "volatility": { "type": ["number", "null"], "description": "Annualised volatility over the last year, %." },
           "allocation": { "type": "array", "items": { "$ref": "#/components/schemas/Allocation" } },
+          "allocationDate": { "type": ["string", "null"], "format": "date", "description": "ISO date of the allocation snapshot, or null. Rendered as \"{date} itibarıyla\" opposite the \"Varlık Dağılımı\" title." },
           "similar": { "type": "array", "items": { "$ref": "#/components/schemas/SimilarFund" } },
           "increased": { "type": "array", "items": { "$ref": "#/components/schemas/HoldingChange" } },
           "decreased": { "type": "array", "items": { "$ref": "#/components/schemas/HoldingChange" } },

@@ -92,6 +92,16 @@
                                     <dd class="font-medium text-foreground">{{ row.value }}</dd>
                                 </div>
                             </dl>
+
+                            <template v-if="apiFields.length">
+                                <h3 class="mb-2 mt-4 text-sm font-semibold text-foreground">API Türevleri</h3>
+                                <dl class="divide-y divide-border rounded-lg border border-border text-sm">
+                                    <div v-for="row in apiFields" :key="row.label" class="flex items-center justify-between px-3 py-2">
+                                        <dt class="text-muted-foreground">{{ row.label }}</dt>
+                                        <dd class="font-medium text-foreground">{{ row.value }}</dd>
+                                    </div>
+                                </dl>
+                            </template>
                         </div>
                         <div>
                             <h3 class="mb-2 text-sm font-semibold text-foreground">Kurucu</h3>
@@ -220,7 +230,7 @@ import Empty from '@/Components/EmptyState.vue';
 const props = defineProps({
     fund: Object, founder: Object, summary: Object, dailySeries: Array,
     allocations: Array, positions: Array, holdings: Array, similarities: Array,
-    disclosures: Array, reports: Array, counts: Object,
+    disclosures: Array, reports: Array, counts: Object, api: Object,
 });
 
 const active = ref('overview');
@@ -259,6 +269,29 @@ const kunye = computed(() => [
     { label: 'TEFAS Tip Kodu', value: props.fund.tefas_type_code ?? '—' },
     { label: 'Güncelleme', value: formatDate(props.fund.updated_at) },
 ]);
+
+// What the public API derives for this fund, mirrored here for verification.
+const apiFields = computed(() => {
+    if (!props.api) return [];
+    const c = props.api.consistency;
+    return [
+        {
+            label: props.api.hasOneYear ? '1 Yıl Getiri' : 'Kuruluştan Beri',
+            value: props.api.y1 != null ? '%' + props.api.y1 : '—',
+        },
+        { label: 'Tam Yıl (hasOneYear)', value: props.api.hasOneYear ? 'Evet' : 'Hayır' },
+        {
+            label: 'Kategori Yüzdelik',
+            value: props.api.categoryPercentile != null
+                ? 'İlk %' + (100 - props.api.categoryPercentile) + ' (' + props.api.categoryPercentile + '/100)'
+                : 'Bilinmiyor',
+        },
+        {
+            label: 'İstikrar',
+            value: c ? `Son ${c.years} yılın ${c.beaten}'inde kategorisini geçti` : 'Bilinmiyor',
+        },
+    ];
+});
 
 // Sparkline
 const sparkW = 600;

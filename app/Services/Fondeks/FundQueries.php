@@ -58,6 +58,18 @@ class FundQueries
     /** Smallest move worth a row — under this it renders as "0,0 puan". */
     private const MIN_MOVE_POINTS = 0.05;
 
+    /** How many trailing-year windows the consistency figure weighs. */
+    private const CONSISTENCY_WINDOWS = 5;
+
+    /**
+     * Below this many comparable years, "consistency" is not a claim worth
+     * making, so the figure is withheld (null) and the client hides the row.
+     */
+    private const MIN_CONSISTENCY_YEARS = 2;
+
+    /** A category needs at least this many ranked funds to place a percentile. */
+    private const MIN_CATEGORY_PEERS = 2;
+
     /**
      * One row per fund with its latest price, the reference prices the returns
      * are measured against, and the most recent monthly size and investor count.
@@ -79,6 +91,7 @@ class FundQueries
                 case when brk.at is null or brk.at <= m1.date   then m1.price   end as m1_price,
                 case when brk.at is null or brk.at <= m3.date   then m3.price   end as m3_price,
                 case when brk.at is null or brk.at <= y1.date   then y1.price   end as y1_price,
+                fp.price as first_price,
                 lp.total_value,
                 lp.investor_count
             from funds f
@@ -114,6 +127,11 @@ class FundQueries
                 order by p.date desc limit 1
             ) y1 on true
             left join lateral (
+                select p.price from fund_daily_stats p
+                where p.fund_code = f.code
+                order by p.date asc limit 1
+            ) fp on true
+            left join lateral (
                 select max(step.date) as at from (
                     select p.date, p.price,
                            lag(p.price) over (order by p.date) as before
@@ -129,6 +147,22 @@ class FundQueries
     /** All funds of one TEFAS universe, best one-year return first. */
     public function getFunds(string $fundType = Constants::PRODUCT_FUND_TYPE): array
     {
+        $percentiles = $this->categoryPercentiles($fundType);
+        $consistency = $this->consistencyByFund($fundType);
+
+        return array_map(
+            fn ($fund) => $this->decorate($fund, $percentiles, $consistency),
+            $this->baseFunds($fundType),
+        );
+    }
+
+    /**
+     * The raw snapshot list for a universe, before the cross-fund figures
+     * (category standing, multi-year consistency) are folded on. Split out so
+     * those figures can be derived from it without the decoration recursing.
+     */
+    private function baseFunds(string $fundType): array
+    {
         return $this->remember("list:{$fundType}", function () use ($fundType) {
             $rows = DB::select($this->snapshotBase().' where f.fund_type = ?', [$fundType]);
 
@@ -143,17 +177,65 @@ class FundQueries
     /** One fund by code. */
     public function getFund(string $code): ?array
     {
-        return $this->remember('fund:'.strtoupper($code), function () use ($code) {
+        $fund = $this->remember('fund:'.strtoupper($code), function () use ($code) {
             $rows = DB::select($this->snapshotBase().' where upper(f.code) = ?', [strtoupper($code)]);
 
             return isset($rows[0]) ? $this->toFund($rows[0]) : null;
         });
+
+        if ($fund === null) {
+            return null;
+        }
+
+        // A single fund is ranked within its own universe, so load that
+        // universe's maps (both cached) and fold its two entries on.
+        $type = $this->fundTypeOf($fund['code']);
+
+        return $this->decorate(
+            $fund,
+            $this->categoryPercentiles($type),
+            $this->consistencyByFund($type),
+        );
+    }
+
+    /** The TEFAS universe (YAT/EMK/BYF) a fund belongs to, cached per code. */
+    private function fundTypeOf(string $code): string
+    {
+        return $this->remember('type:'.strtoupper($code), fn () => (string) (
+            DB::scalar('select fund_type from funds where code = ?', [$code])
+                ?? Constants::PRODUCT_FUND_TYPE
+        ));
+    }
+
+    /**
+     * Folds the cross-fund figures onto one fund: where it stands in its
+     * category over the year, and how many of the last whole years it beat that
+     * category. Both are hash lookups into maps cached across the universe, so
+     * decorating a whole list stays cheap.
+     */
+    private function decorate(array $fund, array $percentiles, array $consistency): array
+    {
+        $fund['categoryPercentile'] = $percentiles[$fund['code']] ?? null;
+        $fund['consistency'] = $consistency[$fund['code']] ?? null;
+
+        return $fund;
     }
 
     /** Maps a snapshot row onto the client's `Fund` shape, in the same key order. */
     private function toFund(object $row): array
     {
         $price = (float) $row->price;
+
+        // A fund with a full year of history measures y1 against the price a
+        // year ago. A younger one has no such anchor, so its y1 carries the
+        // since-inception return instead, and `hasOneYear` lets the client
+        // label it "Kuruluştan beri" rather than "1 Yıl". This keeps list
+        // rankings honest — a two-month-old fund no longer looks like a flat
+        // year — while every full-year fund's figure is left untouched.
+        $hasOneYear = $row->y1_price !== null;
+        $y1 = $hasOneYear
+            ? Num::changePct($price, $row->y1_price)
+            : Num::changePct($price, $row->first_price);
 
         return [
             'code' => $row->code,
@@ -175,7 +257,8 @@ class FundQueries
             'w1' => Num::changePct($price, $row->w1_price),
             'm1' => Num::changePct($price, $row->m1_price),
             'm3' => Num::changePct($price, $row->m3_price),
-            'y1' => Num::changePct($price, $row->y1_price),
+            'y1' => $y1,
+            'hasOneYear' => $hasOneYear,
             'inceptionDate' => $row->inception_date,
             'aum' => Num::json($row->total_value ?? 0),
             'investors' => $row->investor_count === null ? null : (int) $row->investor_count,
@@ -263,7 +346,7 @@ class FundQueries
                     stddev_samp(r) * sqrt('.self::TRADING_DAYS_PER_YEAR.') * 100 as vol
              from (
                 select fund_code,
-                       price / lag(price) over (partition by fund_code order by date) - 1 as r
+                       price / nullif(lag(price) over (partition by fund_code order by date), 0) - 1 as r
                 from fund_daily_stats
                 where fund_code in ('.$placeholders.")
                   and date >= current_date - interval '1 year'
@@ -364,6 +447,13 @@ class FundQueries
              order by position asc',
             [$fund['code'], $fund['code']],
         ));
+
+        // The day that breakdown was published — rendered as "{date} itibarıyla"
+        // opposite the "Varlık Dağılımı" title. Null when the fund has none.
+        $allocationDate = DB::scalar(
+            "select to_char(max(date), 'YYYY-MM-DD') from fund_allocations where fund_code = ?",
+            [$fund['code']],
+        );
 
         $everyFund = $this->getFunds();
         $returnsByCode = [];
@@ -507,6 +597,7 @@ class FundQueries
         return [
             'volatility' => $volatilities[$fund['code']] ?? null,
             'allocation' => $allocation,
+            'allocationDate' => $allocationDate,
             'similar' => $similar,
             'increased' => $this->mapIndexed(array_slice($gained, 0, self::MOVERS_PER_PANEL), $toHolding),
             'decreased' => $this->mapIndexed(array_slice($shed, 0, self::MOVERS_PER_PANEL), $toHolding),
@@ -680,6 +771,183 @@ class FundQueries
      * so a {@see flush()} makes every prior entry unreachable at once. A `null`
      * result is not stored, so a not-yet-known fund keeps missing cheaply.
      */
+    /**
+     * Each fund's standing in its own category over the one-year window, 0–100
+     * with 100 the category's best — keyed by code. Only funds with a real full
+     * year are ranked: a sub-year fund's y1 is a since-inception figure, not
+     * comparable, so it places no percentile (absent from the map → null). A
+     * category with fewer than {@see MIN_CATEGORY_PEERS} ranked funds is skipped
+     * for the same reason — one fund cannot rank against itself.
+     */
+    private function categoryPercentiles(string $fundType): array
+    {
+        return $this->remember("percentiles:{$fundType}", function () use ($fundType) {
+            $byCategory = [];
+            foreach ($this->baseFunds($fundType) as $fund) {
+                if ($fund['hasOneYear']) {
+                    $byCategory[$fund['category']][$fund['code']] = (float) $fund['y1'];
+                }
+            }
+
+            $out = [];
+            foreach ($byCategory as $returns) {
+                if (count($returns) < self::MIN_CATEGORY_PEERS) {
+                    continue;
+                }
+
+                $sorted = array_values($returns);
+                sort($sorted);
+
+                foreach ($returns as $code => $y1) {
+                    $out[$code] = self::percentileRank($sorted, $y1);
+                }
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * Where `$value` sits in `$sortedAscending`, as an integer 0–100: the share
+     * of the *other* values it is strictly above. The lowest scores 0, the
+     * highest 100; ties land just under the top.
+     */
+    private static function percentileRank(array $sortedAscending, float $value): int
+    {
+        $count = count($sortedAscending);
+        if ($count < 2) {
+            return 100;
+        }
+
+        $below = 0;
+        foreach ($sortedAscending as $other) {
+            if ($other < $value) {
+                $below++;
+            }
+        }
+
+        return (int) round($below / ($count - 1) * 100);
+    }
+
+    /**
+     * For each fund, how many of the last whole years it beat its category's
+     * median return — `['beaten' => int, 'years' => int]`, keyed by code — or
+     * absent (→ null) when fewer than {@see MIN_CONSISTENCY_YEARS} comparable
+     * years exist, so the client claims no consistency from a single year. A
+     * year counts for a fund only when it had a price at both ends of that
+     * trailing-year window; each year's category median is taken over just the
+     * funds that qualified for that same year, so a young category still
+     * compares like with like.
+     */
+    private function consistencyByFund(string $fundType): array
+    {
+        return $this->remember("consistency:{$fundType}", function () use ($fundType) {
+            $rows = DB::select($this->consistencyWindowsSql(), [$fundType]);
+
+            $byFund = [];      // code => [window => return]
+            $categoryOf = [];  // code => category
+            $buckets = [];     // "category|window" => [returns]
+
+            foreach ($rows as $row) {
+                if ($row->start_price === null || $row->end_price === null) {
+                    continue;
+                }
+                $start = (float) $row->start_price;
+                if ($start == 0.0) {
+                    continue;
+                }
+
+                $window = (int) $row->k;
+                $return = (float) $row->end_price / $start - 1;
+
+                $byFund[$row->code][$window] = $return;
+                $categoryOf[$row->code] = $row->category;
+                $buckets[$row->category.'|'.$window][] = $return;
+            }
+
+            $medians = [];
+            foreach ($buckets as $key => $returns) {
+                $medians[$key] = self::median($returns);
+            }
+
+            $out = [];
+            foreach ($byFund as $code => $windows) {
+                $years = count($windows);
+                if ($years < self::MIN_CONSISTENCY_YEARS) {
+                    continue;
+                }
+
+                $beaten = 0;
+                foreach ($windows as $window => $return) {
+                    $median = $medians[$categoryOf[$code].'|'.$window] ?? null;
+                    if ($median !== null && $return > $median) {
+                        $beaten++;
+                    }
+                }
+
+                $out[$code] = ['beaten' => $beaten, 'years' => $years];
+            }
+
+            return $out;
+        });
+    }
+
+    /**
+     * One row per fund per trailing-year window, each carrying the fund's price
+     * at the window's two ends (nearest price at or before each bound, as the
+     * snapshot anchors are taken). A window with no price before its start — a
+     * fund that did not yet exist — comes back with a null start and is dropped.
+     */
+    private function consistencyWindowsSql(): string
+    {
+        $windows = self::CONSISTENCY_WINDOWS;
+
+        return <<<SQL
+            with latest as (
+                select max(date) as at from fund_daily_stats
+            ),
+            bounds as (
+                select k,
+                       (select at from latest) -  k      * interval '1 year' as end_at,
+                       (select at from latest) - (k + 1) * interval '1 year' as start_at
+                from generate_series(0, {$windows} - 1) as k
+            ),
+            universe as (
+                select code, category from funds where fund_type = ?
+            )
+            select u.code, u.category::text as category, b.k,
+                   e.price as end_price, s.price as start_price
+            from universe u
+            cross join bounds b
+            left join lateral (
+                select p.price from fund_daily_stats p
+                where p.fund_code = u.code and p.date <= b.end_at
+                order by p.date desc limit 1
+            ) e on true
+            left join lateral (
+                select p.price from fund_daily_stats p
+                where p.fund_code = u.code and p.date <= b.start_at
+                order by p.date desc limit 1
+            ) s on true
+            SQL;
+    }
+
+    /** Median of a numeric list, or null when it is empty. */
+    private static function median(array $values): ?float
+    {
+        if ($values === []) {
+            return null;
+        }
+
+        sort($values);
+        $count = count($values);
+        $mid = intdiv($count, 2);
+
+        return $count % 2 === 1
+            ? $values[$mid]
+            : ($values[$mid - 1] + $values[$mid]) / 2;
+    }
+
     /**
      * Every fund's most recent asset allocation as [fundCode => [label => pct]].
      * Cached with the rest of the read layer; used to rank similar funds by how

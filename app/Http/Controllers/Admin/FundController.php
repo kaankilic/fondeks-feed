@@ -12,11 +12,14 @@ use App\Models\FundHoldingSnapshot;
 use App\Models\FundPosition;
 use App\Models\FundSimilarity;
 use App\Models\KapPortfolioReport;
+use App\Services\Fondeks\FundQueries;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class FundController extends Controller
 {
+    public function __construct(private readonly FundQueries $funds) {}
+
     public function index(Request $request)
     {
         $query = Fund::query();
@@ -24,8 +27,8 @@ class FundController extends Controller
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('code', 'ilike', "%{$search}%")
-                  ->orWhere('name', 'ilike', "%{$search}%")
-                  ->orWhere('founder', 'ilike', "%{$search}%");
+                    ->orWhere('name', 'ilike', "%{$search}%")
+                    ->orWhere('founder', 'ilike', "%{$search}%");
             });
         }
 
@@ -101,9 +104,22 @@ class FundController extends Controller
         $reports = KapPortfolioReport::where('fund_code', $code)
             ->orderByDesc('published_at')->limit(30)->get();
 
+        // The figures the public API derives for this fund (category standing,
+        // multi-year consistency, the full-year flag and the y1 it serves), so
+        // the panel shows exactly what the client reads. Null when the fund has
+        // no price snapshot to derive them from.
+        $apiFund = $this->funds->getFund($code);
+        $api = $apiFund ? [
+            'y1' => $apiFund['y1'],
+            'hasOneYear' => $apiFund['hasOneYear'],
+            'categoryPercentile' => $apiFund['categoryPercentile'],
+            'consistency' => $apiFund['consistency'],
+        ] : null;
+
         return Inertia::render('Admin/FundDetail', [
             'fund' => $fund,
             'founder' => $fund->founderRelation,
+            'api' => $api,
             'summary' => [
                 'latestDate' => $latest?->date,
                 'latestPrice' => $latest?->price,
