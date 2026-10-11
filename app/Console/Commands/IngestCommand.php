@@ -18,6 +18,7 @@ use Illuminate\Console\Command;
  *   php artisan ingest range --from=2026-01-01 --to=2026-03-31
  *   php artisan ingest allocations --days=45
  *   php artisan ingest indices --days=60
+ *   php artisan ingest cpi --days=3650
  *   php artisan ingest positions --period=2026-07-01
  *   php artisan ingest collect
  *   php artisan ingest documents --period=2026-07-01 --limit=500
@@ -52,6 +53,8 @@ class IngestCommand extends Command
                 'allocations' => $this->allocations($funds),
                 'indices' => $this->report('indices', $indices->syncMarketIndices(
                     FundJobs::isoDaysAgo((int) ($this->option('days') ?? 60)), FundJobs::today())),
+                'cpi' => $this->report('cpi', $indices->syncCpi(
+                    FundJobs::isoDaysAgo((int) ($this->option('days') ?? 3650)), FundJobs::today())),
                 'positions' => $this->report('positions', $holdings->syncPositions($this->option('period'))),
                 'collect' => $this->report('collect', $holdings->collectPositions()),
                 'documents' => $this->report('documents', $holdings->recordReportDocuments(
@@ -114,6 +117,7 @@ class IngestCommand extends Command
         $funds->syncFundCatalog();
         $funds->backfillDailyStats($days);
         $indices->syncMarketIndices(FundJobs::isoDaysAgo(min($days, 120)), FundJobs::today());
+        $indices->syncCpi(FundJobs::isoDaysAgo(3650), FundJobs::today());
         $funds->syncAllocations(FundJobs::isoDaysAgo(FundJobs::ALLOCATION_BACKFILL_DAYS), FundJobs::today());
         $holdings->syncPositions();
         $this->info('backfill: complete');

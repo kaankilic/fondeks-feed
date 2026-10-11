@@ -38,6 +38,7 @@ class TefasProvider
         'investors' => ['kisiSayisi', 'yatirimciSayi'],
         'shares' => ['tedPaySayisi', 'payAdet'],
         'managementFee' => ['uygulananYu1Y', 'fonIcTuzukYu1G'],
+        'ter' => ['fonTopGiderKesoran'],
         'onTefas' => ['tefasDurum'],
     ];
 
@@ -254,6 +255,7 @@ class TefasProvider
                     'fundType' => $types[$index],
                     'typeCode' => ((string) (Parse::pick($row, self::MAPPING['typeCode']) ?? '')) ?: null,
                     'managementFee' => Parse::toNumber(Parse::pick($row, self::MAPPING['managementFee'])),
+                    'ter' => Parse::toNumber(Parse::pick($row, self::MAPPING['ter'])),
                     'onTefas' => $this->onTefas($row),
                 ];
             }

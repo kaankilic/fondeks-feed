@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\Ingest\CollectPositionsJob;
+use App\Jobs\Ingest\SyncCpiJob;
 use App\Jobs\Ingest\SyncAllocationsJob;
 use App\Jobs\Ingest\SyncDailyStatsJob;
 use App\Jobs\Ingest\SyncDisclosuresJob;
@@ -34,6 +35,11 @@ Schedule::job(new SyncAllocationsJob())
 // Index quotes — after TCMB's afternoon bulletin.
 Schedule::job(new SyncMarketIndicesJob(days: 5))
     ->dailyAt('16:10')->timezone($tz)->onOneServer()->withoutOverlapping();
+
+// TÜFE (CPI) index for real returns. TÜİK releases monthly figures early in
+// the following month; a daily run catches the release without any calendar.
+Schedule::job(new SyncCpiJob())
+    ->dailyAt('16:20')->timezone($tz)->onOneServer()->withoutOverlapping();
 
 // Catalogue: new funds, renames, retired funds. Weekly is plenty.
 Schedule::job(new SyncFundCatalogJob())

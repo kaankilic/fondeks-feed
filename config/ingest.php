@@ -18,9 +18,15 @@ return [
 
     'tcmb' => [
         'base_url' => env('TCMB_BASE_URL', 'https://www.tcmb.gov.tr/kurlar'),
-        'evds_key' => env('TCMB_EVDS_API_KEY', ''),
+        // Prefer TCMB_EVDS_API_TOKEN; fall back to the historical name so an
+        // environment that already set TCMB_EVDS_API_KEY keeps working.
+        'evds_key' => env('TCMB_EVDS_API_TOKEN', env('TCMB_EVDS_API_KEY', '')),
         'evds_base_url' => env('EVDS_BASE_URL', 'https://evds3.tcmb.gov.tr/igmevdsms-dis'),
         'evds_series' => env('EVDS_SERIES', ''),
+        // EVDS series code for the TÜFE (consumer price index) level, used to
+        // derive real fund returns. TP.FG.J0 is the general CPI index; verify
+        // it in the EVDS series list before relying on it in production.
+        'cpi_series' => env('CPI_SERIES', 'TP.FG.J0'),
     ],
 
     'kap' => [

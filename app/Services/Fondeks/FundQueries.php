@@ -82,7 +82,7 @@ class FundQueries
         return <<<SQL
             select
                 f.code, f.name, f.founder, fo.initials, fo.color, f.category, f.isin,
-                f.management_fee, f.withholding_tax, f.risk,
+                f.management_fee, f.ter, f.withholding_tax, f.risk,
                 f.buy_value_days, f.sell_value_days, f.on_tefas, f.inception_date,
                 lp.price,
                 to_char(lp.date, 'YYYY-MM-DD') as price_date,
@@ -149,9 +149,10 @@ class FundQueries
     {
         $percentiles = $this->categoryPercentiles($fundType);
         $consistency = $this->consistencyByFund($fundType);
+        $cpi = $this->cpiContext();
 
         return array_map(
-            fn ($fund) => $this->decorate($fund, $percentiles, $consistency),
+            fn ($fund) => $this->decorate($fund, $percentiles, $consistency, $cpi),
             $this->baseFunds($fundType),
         );
     }
@@ -195,6 +196,7 @@ class FundQueries
             $fund,
             $this->categoryPercentiles($type),
             $this->consistencyByFund($type),
+            $this->cpiContext(),
         );
     }
 
@@ -213,12 +215,133 @@ class FundQueries
      * category. Both are hash lookups into maps cached across the universe, so
      * decorating a whole list stays cheap.
      */
-    private function decorate(array $fund, array $percentiles, array $consistency): array
+    private function decorate(array $fund, array $percentiles, array $consistency, array $cpi): array
     {
         $fund['categoryPercentile'] = $percentiles[$fund['code']] ?? null;
         $fund['consistency'] = $consistency[$fund['code']] ?? null;
+        $fund['realReturn'] = $this->realReturnsFor($fund, $cpi);
 
         return $fund;
+    }
+
+    /**
+     * Each nominal window return deflated by TÜFE over the same span — the
+     * fund's "reel getiri". Only the monthly-and-longer windows are given, since
+     * CPI is a monthly series; daily and weekly real returns would be noise. For
+     * a sub-year fund, whose y1 is a since-inception figure, inflation is taken
+     * from the fund's inception date instead. Null throughout when no CPI has
+     * been ingested, and null for any single window whose inflation is unknown.
+     */
+    private function realReturnsFor(array $fund, array $cpi): ?array
+    {
+        if (empty($cpi['available'])) {
+            return null;
+        }
+
+        $real = function ($nominal, ?float $factor) {
+            if ($factor === null || $factor <= 0) {
+                return null;
+            }
+
+            return Num::json(round(((1 + (float) $nominal / 100) / $factor - 1) * 100, 2));
+        };
+
+        $y1Factor = $fund['hasOneYear']
+            ? $cpi['f12m']
+            : $this->cpiFactorSince($cpi, $fund['inceptionDate'] ?? null);
+
+        return [
+            'm1' => $real($fund['m1'], $cpi['f1m']),
+            'm3' => $real($fund['m3'], $cpi['f3m']),
+            'y1' => $real($fund['y1'], $y1Factor),
+        ];
+    }
+
+    /**
+     * The CPI inflation factor (latest ÷ as-of) from a date up to the latest
+     * reading — used to deflate a sub-year fund's since-inception return. Null
+     * when the date is unknown or predates the CPI series.
+     */
+    private function cpiFactorSince(array $cpi, ?string $isoDate): ?float
+    {
+        if ($isoDate === null) {
+            return null;
+        }
+
+        $start = $this->nearestCpi($cpi, substr($isoDate, 0, 10));
+
+        return ($start === null || $start <= 0) ? null : $cpi['latestValue'] / $start;
+    }
+
+    /**
+     * The CPI value as of a date: the reading on the greatest month on or before
+     * it. Null when the date precedes the whole series.
+     */
+    private function nearestCpi(array $cpi, string $isoDate): ?float
+    {
+        $found = null;
+        foreach ($cpi['series'] as $date => $value) {
+            if ($date <= $isoDate) {
+                $found = $value;
+            } else {
+                break;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The CPI series and the inflation factors for the standard windows, read
+     * once and cached with the rest of the read layer. `available` is false when
+     * no CPI has been ingested (or the table does not yet exist), in which case
+     * real returns are withheld rather than guessed. Each factor is the latest
+     * index divided by its value a window ago; null when history is too short.
+     */
+    private function cpiContext(): array
+    {
+        return $this->remember('cpi:context', function () {
+            try {
+                $rows = DB::select("select to_char(date, 'YYYY-MM-DD') as date, value from cpi order by date asc");
+            } catch (\Throwable) {
+                return ['available' => false];
+            }
+
+            if ($rows === []) {
+                return ['available' => false];
+            }
+
+            $series = [];
+            foreach ($rows as $row) {
+                $series[$row->date] = (float) $row->value;
+            }
+
+            $latestDate = array_key_last($series);
+            $latestValue = $series[$latestDate];
+
+            $factor = function (int $months) use ($series, $latestDate, $latestValue): ?float {
+                $asOf = date('Y-m-d', strtotime("{$latestDate} -{$months} months"));
+                $start = null;
+                foreach ($series as $date => $value) {
+                    if ($date <= $asOf) {
+                        $start = $value;
+                    } else {
+                        break;
+                    }
+                }
+
+                return ($start === null || $start <= 0) ? null : $latestValue / $start;
+            };
+
+            return [
+                'available' => true,
+                'series' => $series,
+                'latestValue' => $latestValue,
+                'f1m' => $factor(1),
+                'f3m' => $factor(3),
+                'f12m' => $factor(12),
+            ];
+        });
     }
 
     /** Maps a snapshot row onto the client's `Fund` shape, in the same key order. */
@@ -237,6 +360,17 @@ class FundQueries
             ? Num::changePct($price, $row->y1_price)
             : Num::changePct($price, $row->first_price);
 
+        $daily = Num::changePct($price, $row->prev_price);
+        $w1 = Num::changePct($price, $row->w1_price);
+        $m1 = Num::changePct($price, $row->m1_price);
+        $m3 = Num::changePct($price, $row->m3_price);
+
+        // Each gross window, net of the income withholding (stopaj) that would
+        // be levied on the gain: net% = gross% × (1 − rate). The rate is a
+        // policy assumption from config/tax.php, not a per-fund reported figure.
+        $rate = $this->withholdingRate($row->category);
+        $net = fn ($gross) => Num::json(round((float) $gross * (1 - $rate), 2));
+
         return [
             'code' => $row->code,
             'slug' => Slug::fundSlug($row->code, $row->name),
@@ -247,23 +381,49 @@ class FundQueries
             'category' => $row->category,
             'isin' => $row->isin,
             'managementFee' => Num::json($row->management_fee),
+            'ter' => $row->ter === null ? null : Num::json($row->ter),
             'withholdingTax' => $row->withholding_tax === null ? null : Num::json($row->withholding_tax),
             'buyValueDays' => $row->buy_value_days === null ? null : (int) $row->buy_value_days,
             'sellValueDays' => $row->sell_value_days === null ? null : (int) $row->sell_value_days,
             'onTefas' => $this->toBool($row->on_tefas),
             'price' => Num::json($price),
             'priceDate' => $row->price_date,
-            'daily' => Num::changePct($price, $row->prev_price),
-            'w1' => Num::changePct($price, $row->w1_price),
-            'm1' => Num::changePct($price, $row->m1_price),
-            'm3' => Num::changePct($price, $row->m3_price),
+            'daily' => $daily,
+            'w1' => $w1,
+            'm1' => $m1,
+            'm3' => $m3,
             'y1' => $y1,
+            'netReturn' => [
+                'daily' => $net($daily),
+                'w1' => $net($w1),
+                'm1' => $net($m1),
+                'm3' => $net($m3),
+                'y1' => $net($y1),
+            ],
             'hasOneYear' => $hasOneYear,
             'inceptionDate' => $row->inception_date,
             'aum' => Num::json($row->total_value ?? 0),
             'investors' => $row->investor_count === null ? null : (int) $row->investor_count,
             'risk' => $row->risk === null ? null : (int) $row->risk,
         ];
+    }
+
+    /**
+     * The income-withholding (stopaj) rate for a fund of this category, as a
+     * fraction, from config/tax.php. A category with no explicit override takes
+     * the default. See that file for why this is a policy assumption rather
+     * than reported data.
+     */
+    private function withholdingRate(?string $category): float
+    {
+        $config = config('tax.fund_withholding', []);
+        $default = (float) ($config['default'] ?? 0.0);
+
+        if ($category === null) {
+            return $default;
+        }
+
+        return (float) (($config['categories'] ?? [])[$category] ?? $default);
     }
 
     /** Daily price series, oldest first, limited to the last `days` sessions. */

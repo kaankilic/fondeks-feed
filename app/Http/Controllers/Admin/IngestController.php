@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\Ingest\CollectPositionsJob;
+use App\Jobs\Ingest\SyncCpiJob;
 use App\Jobs\Ingest\SyncAllocationsJob;
 use App\Jobs\Ingest\SyncDailyStatsJob;
 use App\Jobs\Ingest\SyncDisclosuresJob;
@@ -42,6 +43,11 @@ class IngestController extends Controller
             'label' => 'Piyasa Endeksleri', 'run' => 'market-indices',
             'description' => 'Endeks ve döviz kotasyonları (TCMB / EVDS / Yahoo).',
             'params' => ['days'],
+        ],
+        'cpi' => [
+            'label' => 'TÜFE (Reel Getiri)', 'run' => 'cpi',
+            'description' => 'EVDS TÜFE endeksi — reel getiri hesabının girdisi.',
+            'params' => [],
         ],
         'inceptions' => [
             'label' => 'Fon Kuruluş Tarihleri', 'run' => 'fund-inceptions',
@@ -114,6 +120,7 @@ class IngestController extends Controller
             'daily' => SyncDailyStatsJob::dispatch(days: $days ?? 3),
             'allocations' => SyncAllocationsJob::dispatch(days: $days),
             'indices' => SyncMarketIndicesJob::dispatch(days: $days ?? 5),
+            'cpi' => SyncCpiJob::dispatch(),
             'inceptions' => SyncFundInceptionsJob::dispatch(),
             'profiles' => SyncFundProfilesJob::dispatch(),
             'disclosures' => SyncDisclosuresJob::dispatch(days: $days, limit: $limit),

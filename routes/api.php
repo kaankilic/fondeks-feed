@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BlogController;
 use App\Http\Controllers\Api\FounderController;
 use App\Http\Controllers\Api\FundController;
 use App\Http\Controllers\Api\HealthController;
@@ -23,6 +24,9 @@ Route::get('/funds/search', [FundController::class, 'search']);
 Route::get('/funds/{code}', [FundController::class, 'show']);
 
 Route::get('/leaders', [LeaderController::class, 'index']);
+
+Route::get('/blog', [BlogController::class, 'index']);
+Route::get('/blog/{slug}', [BlogController::class, 'show']);
 
 // Proxied BIST ticker logo (Forinvest CDN), served from our own origin.
 Route::get('/symbols/{code}/icon', [SymbolController::class, 'icon']);

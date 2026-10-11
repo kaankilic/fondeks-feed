@@ -51,7 +51,7 @@ class IndicesJobs
 
                 if ($source === 'evds') {
                     if (!$this->providers->evdsConfigured()) {
-                        Log::warning("[indices] skipping {$row->name}: TCMB_EVDS_API_KEY is not set");
+                        Log::warning("[indices] skipping {$row->name}: TCMB_EVDS_API_TOKEN is not set");
                         continue;
                     }
                     if (!$row->source_symbol) {
@@ -96,6 +96,47 @@ class IndicesJobs
                 'value = excluded.value, ingested_at = now()');
 
             return ['rowsRead' => $read, 'rowsWritten' => $written];
+        });
+    }
+
+    /**
+     * Fills the `cpi` table from EVDS's TÜFE series — the monthly index levels
+     * real fund returns are measured against. A wide window is cheap (one row
+     * per month) and keeps history deep enough to deflate a fund's return since
+     * its inception. Skipped with a warning when EVDS has no key, so a run on an
+     * unconfigured environment is a no-op rather than a failure.
+     */
+    public function syncCpi(string $from, string $to): array
+    {
+        return $this->runs->withRun('cpi', ['from' => $from, 'to' => $to], function () use ($from, $to) {
+            if ((config('ingest.market_provider') ?: 'fixture') === 'fixture') {
+                return ['rowsRead' => 0, 'rowsWritten' => 0];
+            }
+
+            if (!$this->providers->evdsConfigured()) {
+                Log::warning('[cpi] skipping: TCMB_EVDS_API_TOKEN is not set');
+
+                return ['rowsRead' => 0, 'rowsWritten' => 0];
+            }
+
+            $series = trim((string) config('ingest.tcmb.cpi_series'));
+            if ($series === '') {
+                Log::warning('[cpi] skipping: CPI_SERIES is not set');
+
+                return ['rowsRead' => 0, 'rowsWritten' => 0];
+            }
+
+            $quotes = $this->providers->evdsSeries($series, $from, $to);
+
+            $rows = array_map(fn ($quote) => [
+                'date' => $quote['date'],
+                'value' => $quote['value'],
+            ], $quotes);
+
+            $written = Upsert::run('cpi', $rows, ['date'],
+                'value = excluded.value, ingested_at = now()');
+
+            return ['rowsRead' => count($quotes), 'rowsWritten' => $written];
         });
     }
 }

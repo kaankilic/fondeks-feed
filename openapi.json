@@ -13,6 +13,7 @@
   "tags": [
     { "name": "Funds", "description": "Fund list, search and detail" },
     { "name": "Discovery", "description": "Leader boards" },
+    { "name": "Blog", "description": "Editorial guides: list and single post" },
     { "name": "System", "description": "Health probe" },
     { "name": "Auth", "description": "Sanctum token authentication" }
   ],
@@ -42,7 +43,7 @@
                 "schema": { "$ref": "#/components/schemas/FundListResponse" },
                 "example": {
                   "items": [
-                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.387541, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } }
+                    { "code": "AFT", "slug": "AFT-ak-portfoy-teknoloji-yabanci-hisse-fonu", "name": "AK PORTFÖY TEKNOLOJİ YABANCI HİSSE FONU", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "ter": 2.28, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.387541, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "netReturn": { "daily": -1.17, "w1": -2.75, "m1": 1, "m3": 32.45, "y1": 56.16 }, "realReturn": { "m1": -1.42, "m3": 7.31, "y1": 17.65 }, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } }
                   ],
                   "total": 2054,
                   "limit": 25,
@@ -123,13 +124,63 @@
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LeadersResponse" },
                 "examples": {
-                  "returns": { "summary": "type=returns", "value": { "type": "returns", "items": [ { "code": "AFT", "slug": "AFT-...", "name": "AK PORTFÖY ...", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.38, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } } ] } },
+                  "returns": { "summary": "type=returns", "value": { "type": "returns", "items": [ { "code": "AFT", "slug": "AFT-...", "name": "AK PORTFÖY ...", "founder": "AK PORTFÖY YÖNETİMİ A.Ş.", "founderInitials": "AP", "founderColor": "#E30613", "category": "Hisse Senedi", "isin": "TRYAFT000019", "managementFee": 1.9, "ter": 2.28, "withholdingTax": null, "buyValueDays": 1, "sellValueDays": 2, "onTefas": true, "price": 25.38, "priceDate": "2026-09-21", "daily": -1.3, "w1": -3.06, "m1": 1.11, "m3": 36.05, "y1": 62.4, "netReturn": { "daily": -1.17, "w1": -2.75, "m1": 1, "m3": 32.45, "y1": 56.16 }, "realReturn": { "m1": -1.42, "m3": 7.31, "y1": 17.65 }, "hasOneYear": true, "inceptionDate": "2019-04-11", "aum": 10252184844.13, "investors": 45231, "risk": 6, "categoryPercentile": 82, "consistency": { "beaten": 4, "years": 5 } } ] } },
                   "investors": { "summary": "type=investors", "value": { "type": "investors", "items": [ { "fund": { "code": "PHF", "name": "PİRAMİT PORTFÖY ...", "y1": 0 }, "growthPct": 128.4, "investors": 8123 } ] } }
                 }
               }
             }
           },
           "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/blog": {
+      "get": {
+        "tags": ["Blog"],
+        "summary": "Published blog posts",
+        "description": "The editorial guides, newest first. Only posts with a publishedAt at or before now are returned; the body is omitted from the list.",
+        "operationId": "getBlogPosts",
+        "parameters": [
+          { "name": "category", "in": "query", "required": false, "schema": { "type": "string", "maxLength": 80 }, "description": "Filter to one category, e.g. \"Temel\" or \"Fonlar\"." },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0, "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of published posts.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "public, s-maxage=60, stale-while-revalidate=300" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlogListResponse" },
+                "example": { "items": [ { "slug": "tefas-nasil-calisir-turkiye-deki-butun-yatirim-fonlarina-tek-tikla-erisim-rehber", "title": "TEFAS Nasıl Çalışır?", "summary": "TEFAS, Türkiye'de finansal okuryazarlığı artıran en önemli altyapılardan biridir.", "category": "Temel", "readingMinutes": 3, "publishedAt": "2026-10-11T15:49:08+00:00" } ], "total": 5, "limit": 20, "offset": 0 }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/blog/{slug}": {
+      "get": {
+        "tags": ["Blog"],
+        "summary": "One blog post",
+        "description": "A single published post by slug, including its full body. 404 when the slug is unknown or the post is not yet published.",
+        "operationId": "getBlogPost",
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" }, "description": "The post's slug." }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested post.",
+            "headers": { "Cache-Control": { "schema": { "type": "string" }, "description": "public, s-maxage=60, stale-while-revalidate=300" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BlogPostResponse" },
+                "example": { "post": { "slug": "tefas-nasil-calisir-turkiye-deki-butun-yatirim-fonlarina-tek-tikla-erisim-rehber", "title": "TEFAS Nasıl Çalışır?", "summary": "TEFAS, Türkiye'de finansal okuryazarlığı artıran en önemli altyapılardan biridir.", "category": "Temel", "readingMinutes": 3, "publishedAt": "2026-10-11T15:49:08+00:00", "body": "<p>Türkiye'de yatırım dünyasına adım atan her birikim sahibinin…</p>" } }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -262,7 +313,8 @@
           "category": { "type": "string" },
           "isin": { "type": ["string", "null"] },
           "managementFee": { "type": "number", "description": "Yıllık yönetim ücreti, %." },
-          "withholdingTax": { "type": ["number", "null"], "description": "Stopaj oranı, %." },
+          "ter": { "type": ["number", "null"], "description": "Fon toplam gider (kesinti) oranı, yıllık %. TEFAS's published ceiling rate (fonTopGiderKesoran); covers management plus other costs, so generally ≥ managementFee. Null when TEFAS reports none." },
+          "withholdingTax": { "type": ["number", "null"], "description": "Stopaj oranı, %. Per-fund reported rate from TEFAS; currently null for all funds (not supplied upstream). Distinct from the policy rate used to derive netReturn." },
           "buyValueDays": { "type": ["integer", "null"] },
           "sellValueDays": { "type": ["integer", "null"] },
           "onTefas": { "type": ["boolean", "null"] },
@@ -273,6 +325,8 @@
           "m1": { "type": "number", "description": "Trailing one month, %." },
           "m3": { "type": "number", "description": "Trailing three months, %." },
           "y1": { "type": "number", "description": "Trailing one year, %. For a fund without a full year of history (hasOneYear=false) this carries the since-inception return instead, so list rankings stay honest." },
+          "netReturn": { "type": "object", "description": "Each gross window return net of income withholding (stopaj): net = gross × (1 − rate). The rate is a per-category policy assumption from config/tax.php, not a per-fund reported figure.", "properties": { "daily": { "type": "number" }, "w1": { "type": "number" }, "m1": { "type": "number" }, "m3": { "type": "number" }, "y1": { "type": "number" } } },
+          "realReturn": { "type": ["object", "null"], "description": "Nominal return deflated by TÜFE (CPI) over the same span — reel getiri. Only the monthly-and-longer windows are given, since CPI is monthly. Null (whole field) until CPI has been ingested; a single window is null when its inflation span is unknown. For a sub-year fund the y1 figure deflates the since-inception return by CPI since inception.", "properties": { "m1": { "type": ["number", "null"] }, "m3": { "type": ["number", "null"] }, "y1": { "type": ["number", "null"] } } },
           "hasOneYear": { "type": "boolean", "description": "Whether a full year of price history exists. When false, y1 is a since-inception figure and should read \"Kuruluştan beri\" rather than \"1 Yıl\"." },
           "inceptionDate": { "type": ["string", "null"], "format": "date" },
           "aum": { "type": "number", "description": "Fon toplam değeri (latest month), TRY." },
@@ -310,6 +364,39 @@
         "type": "object",
         "required": ["results"],
         "properties": { "results": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } } }
+      },
+      "BlogListItem": {
+        "type": "object",
+        "required": ["slug", "title", "summary", "category", "readingMinutes", "publishedAt"],
+        "properties": {
+          "slug": { "type": "string", "description": "Canonical URL segment and identifier." },
+          "title": { "type": "string" },
+          "summary": { "type": ["string", "null"] },
+          "category": { "type": ["string", "null"], "description": "e.g. \"Temel\", \"Fonlar\"." },
+          "readingMinutes": { "type": ["integer", "null"], "description": "Estimated reading time in minutes." },
+          "publishedAt": { "type": ["string", "null"], "format": "date-time", "description": "ISO 8601 publish timestamp." }
+        }
+      },
+      "BlogPost": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BlogListItem" },
+          { "type": "object", "required": ["body"], "properties": { "body": { "type": "string", "description": "Full article body as HTML." } } }
+        ]
+      },
+      "BlogListResponse": {
+        "type": "object",
+        "required": ["items", "total", "limit", "offset"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/BlogListItem" } },
+          "total": { "type": "integer", "description": "Published posts matching the filter, before paging." },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" }
+        }
+      },
+      "BlogPostResponse": {
+        "type": "object",
+        "required": ["post"],
+        "properties": { "post": { "$ref": "#/components/schemas/BlogPost" } }
       },
       "PricePoint": {
         "type": "object",

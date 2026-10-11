@@ -106,7 +106,7 @@ class IndexProviders
     {
         $key = trim((string) config('ingest.tcmb.evds_key'));
         if ($key === '') {
-            throw new \RuntimeException('TCMB_EVDS_API_KEY is not set');
+            throw new \RuntimeException('TCMB_EVDS_API_TOKEN is not set');
         }
 
         [$series, $divisorStr] = array_pad(explode('/', $rawSymbol), 2, null);
