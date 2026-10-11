@@ -128,21 +128,49 @@ class IndexProviders
 
         foreach (($payload['items'] ?? []) as $item) {
             $raw = $item[$column] ?? $item[$series] ?? null;
-            $date = $item['Tarih'] ?? $item['TARIH'] ?? null;
-            if (!$raw || !$date) {
+            $date = $this->evdsDate($item['Tarih'] ?? $item['TARIH'] ?? null);
+            if (!$raw || $date === null) {
                 continue;
             }
 
             $value = (float) str_replace(',', '.', (string) $raw) / $divisor;
-            [$day, $month, $year] = array_pad(explode('-', (string) $date), 3, null);
-            if (!is_finite($value) || !$year) {
+            if (!is_finite($value)) {
                 continue;
             }
 
-            $quotes[] = ['name' => $rawSymbol, 'date' => "{$year}-{$month}-{$day}", 'value' => $value];
+            $quotes[] = ['name' => $rawSymbol, 'date' => $date, 'value' => $value];
         }
 
         return $quotes;
+    }
+
+    /**
+     * Normalise an EVDS `Tarih` to an ISO `YYYY-MM-DD`. EVDS formats it by the
+     * series' frequency: a daily series gives "DD-MM-YYYY", while a monthly one
+     * (like the TÜFE/CPI level) gives "YYYY-M" — which a day-first parser would
+     * otherwise drop, taking every reading with it. A monthly reading is dated
+     * to the first of its month. Null when the shape is unrecognised.
+     */
+    private function evdsDate(?string $raw): ?string
+    {
+        $raw = trim((string) $raw);
+
+        // Monthly: "YYYY-M" or "YYYY-MM".
+        if (preg_match('/^(\d{4})-(\d{1,2})$/', $raw, $m)) {
+            return sprintf('%04d-%02d-01', (int) $m[1], (int) $m[2]);
+        }
+
+        // Daily: "DD-MM-YYYY".
+        if (preg_match('/^(\d{1,2})-(\d{1,2})-(\d{4})$/', $raw, $m)) {
+            return sprintf('%04d-%02d-%02d', (int) $m[3], (int) $m[2], (int) $m[1]);
+        }
+
+        // Already ISO: "YYYY-MM-DD".
+        if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $raw, $m)) {
+            return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
+        }
+
+        return null;
     }
 
     /* ── Yahoo ─────────────────────────────────────────────────────────── */

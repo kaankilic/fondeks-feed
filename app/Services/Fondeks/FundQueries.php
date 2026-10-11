@@ -365,10 +365,16 @@ class FundQueries
         $m1 = Num::changePct($price, $row->m1_price);
         $m3 = Num::changePct($price, $row->m3_price);
 
-        // Each gross window, net of the income withholding (stopaj) that would
-        // be levied on the gain: net% = gross% × (1 − rate). The rate is a
-        // policy assumption from config/tax.php, not a per-fund reported figure.
-        $rate = $this->withholdingRate($row->category);
+        // The income-withholding (stopaj) rate for this fund, as a fraction:
+        // TEFAS's reported figure if it ever supplies one (the withholding_tax
+        // column, stored as a percent), otherwise the per-category policy
+        // assumption from config/tax.php. Each gross window is carried net of
+        // it — net% = gross% × (1 − rate) — and the same rate is surfaced as
+        // `withholdingTax` below, so the client's own net computation (which it
+        // does for sub-year funds) always agrees with ours.
+        $rate = $row->withholding_tax === null
+            ? $this->withholdingRate($row->category)
+            : (float) $row->withholding_tax / 100;
         $net = fn ($gross) => Num::json(round((float) $gross * (1 - $rate), 2));
 
         return [
@@ -382,7 +388,12 @@ class FundQueries
             'isin' => $row->isin,
             'managementFee' => Num::json($row->management_fee),
             'ter' => $row->ter === null ? null : Num::json($row->ter),
-            'withholdingTax' => $row->withholding_tax === null ? null : Num::json($row->withholding_tax),
+            // The stopaj rate as a percentage (e.g. 10, or 0 for equity funds),
+            // the same effective rate the netReturn figures use. A sub-year
+            // fund's panel computes its net since-inception return from this
+            // client-side; a full-year fund prefers our netReturn and falls
+            // back to this. Never null, so the net row always resolves.
+            'withholdingTax' => Num::json(round($rate * 100, 2)),
             'buyValueDays' => $row->buy_value_days === null ? null : (int) $row->buy_value_days,
             'sellValueDays' => $row->sell_value_days === null ? null : (int) $row->sell_value_days,
             'onTefas' => $this->toBool($row->on_tefas),
