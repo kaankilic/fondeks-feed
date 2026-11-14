@@ -52,6 +52,25 @@ class AuthController extends Controller
         return $this->plain(['user' => $this->userPayload($request->user())]);
     }
 
+    public function update(Request $request)
+    {
+        $user = $request->user();
+
+        try {
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|max:255|unique:users,email,' . $user->id,
+            ]);
+        } catch (ValidationException $e) {
+            return $this->badRequest($e->validator->errors()->first());
+        }
+
+        $user->name = $request->input('name');
+        $user->save();
+
+        return $this->plain(['user' => $this->userPayload($user)]);
+    }
+
     /** Revoke the token used to make this request. */
     public function logout(Request $request)
     {

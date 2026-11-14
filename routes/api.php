@@ -35,9 +35,10 @@ Route::get('/symbols/{code}/icon', [SymbolController::class, 'icon']);
 Route::get('/founders/{slug}/icon', [FounderController::class, 'icon']);
 
 // ── Sanctum-protected surface ────────────────────────────────────────────────
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', [AuthController::class, 'me']);
+    Route::post('/user', [AuthController::class, 'update']);
     Route::post('/logout', [AuthController::class, 'logout']);
 });
