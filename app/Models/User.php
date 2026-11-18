@@ -16,7 +16,15 @@ class User extends Authenticatable
 
     public $incrementing = false;
 
-    protected $fillable = ['email', 'name', 'password_hash'];
+    protected $fillable = [
+        'email',
+        'name',
+        'password_hash',
+        'terms_accepted_at',
+        'kvkk_acknowledged_at',
+        'age_confirmed_at',
+        'marketing_consent_at',
+    ];
 
     protected $hidden = ['password_hash'];
 
@@ -25,6 +33,10 @@ class User extends Authenticatable
         return [
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'terms_accepted_at' => 'datetime',
+            'kvkk_acknowledged_at' => 'datetime',
+            'age_confirmed_at' => 'datetime',
+            'marketing_consent_at' => 'datetime',
         ];
     }
 

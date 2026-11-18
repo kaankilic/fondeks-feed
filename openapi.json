@@ -213,6 +213,43 @@
         }
       }
     },
+    "/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Create a password-based account and issue a token",
+        "description": "Creates a new user with name, e-mail and password, hashes the password with the same scrypt scheme the Next.js client uses, and returns a Sanctum bearer token so the client is signed in immediately.",
+        "operationId": "register",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password", "name", "terms_accepted", "kvkk_acknowledged", "age_confirmed"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "maxLength": 255 },
+                  "password": { "type": "string", "minLength": 8, "maxLength": 255 },
+                  "name": { "type": "string", "maxLength": 255 },
+                  "terms_accepted": { "type": "boolean", "description": "Must be `true`. Server stamps `termsAcceptedAt` with the current time." },
+                  "kvkk_acknowledged": { "type": "boolean", "description": "Must be `true`. Server stamps `kvkkAcknowledgedAt` with the current time." },
+                  "age_confirmed": { "type": "boolean", "description": "Must be `true`. Server stamps `ageConfirmedAt` with the current time." },
+                  "marketing_consent": { "type": "boolean", "description": "Optional. When `true`, server stamps `marketingConsentAt`; otherwise it stays null.", "default": false },
+                  "device_name": { "type": "string", "maxLength": 255, "description": "Optional label for the issued token.", "default": "api" }
+                }
+              },
+              "example": { "email": "jane@example.com", "password": "correct horse battery staple", "name": "Jane Doe", "terms_accepted": true, "kvkk_acknowledged": true, "age_confirmed": true, "marketing_consent": false, "device_name": "web" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Account created; returns a bearer token and the new user with all four consent timestamps populated server-side.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginResponse" }, "example": { "token": "5|newABC...", "user": { "id": "0192...", "email": "jane@example.com", "name": "Jane Doe", "termsAcceptedAt": "2026-11-18T12:00:00+00:00", "kvkkAcknowledgedAt": "2026-11-18T12:00:00+00:00", "ageConfirmedAt": "2026-11-18T12:00:00+00:00", "marketingConsentAt": null } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
     "/login": {
       "post": {
         "tags": ["Auth"],
@@ -245,6 +282,50 @@
         }
       }
     },
+    "/auth/google": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Exchange a Google ID token for a personal access token",
+        "description": "Verifies a Google Identity Services ID token (obtained client-side) against Google's `tokeninfo` endpoint, then issues a Sanctum bearer token. Creates the user on first sign-in and sets `is_new_user: true` so the caller can route the user to a profile-completion step that posts to `/user`. When the request creates the account, the three required consent flags must be sent with the id_token and are stamped server-side; they are ignored for returning users.",
+        "operationId": "googleCallback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["id_token"],
+                "properties": {
+                  "id_token": { "type": "string", "description": "The `id_token` string returned by Google Identity Services after the user completes the browser-side flow." },
+                  "terms_accepted": { "type": "boolean", "description": "Required when this request creates a new account. Must be `true`." },
+                  "kvkk_acknowledged": { "type": "boolean", "description": "Required when this request creates a new account. Must be `true`." },
+                  "age_confirmed": { "type": "boolean", "description": "Required when this request creates a new account. Must be `true`." },
+                  "marketing_consent": { "type": "boolean", "description": "Optional. Only honoured when this request creates the account.", "default": false },
+                  "device_name": { "type": "string", "maxLength": 255, "description": "Optional label for the issued token.", "default": "api" }
+                }
+              },
+              "example": { "id_token": "eyJhbGciOi...", "terms_accepted": true, "kvkk_acknowledged": true, "age_confirmed": true, "marketing_consent": false, "device_name": "web" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A bearer token and the authenticated user. `is_new_user` is `true` when the account was created by this request.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GoogleAuthResponse" }, "example": { "token": "4|xyzABC...", "user": { "id": "0192...", "email": "person@example.com", "name": "Jane Doe" }, "is_new_user": true } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "500": {
+            "description": "Server-side OAuth configuration is missing.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Google OAuth is not configured." } } }
+          },
+          "502": {
+            "description": "Google's `tokeninfo` endpoint could not be reached.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Google kimlik doğrulama servisine ulaşılamadı." } } }
+          }
+        }
+      }
+    },
     "/user": {
       "get": {
         "tags": ["Auth"],
@@ -253,6 +334,34 @@
         "security": [ { "bearerAuth": [] } ],
         "responses": {
           "200": { "description": "The current user.", "content": { "application/json": { "schema": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/User" } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthenticated" }
+        }
+      },
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Update the authenticated user's profile",
+        "description": "Used to complete registration after a Google sign-in creates a new account (`is_new_user: true`), and for ordinary profile edits thereafter.",
+        "operationId": "updateCurrentUser",
+        "security": [ { "bearerAuth": [] } ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email"],
+                "properties": {
+                  "name": { "type": "string", "maxLength": 255 },
+                  "email": { "type": "string", "format": "email", "maxLength": 255 }
+                }
+              },
+              "example": { "name": "Jane Doe", "email": "jane@example.com" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "The updated user.", "content": { "application/json": { "schema": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/User" } } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthenticated" }
         }
       }
@@ -533,11 +642,15 @@
       },
       "User": {
         "type": "object",
-        "required": ["id", "email", "name"],
+        "required": ["id", "email", "name", "termsAcceptedAt", "kvkkAcknowledgedAt", "ageConfirmedAt", "marketingConsentAt"],
         "properties": {
           "id": { "type": "string", "format": "uuid" },
           "email": { "type": "string", "format": "email" },
-          "name": { "type": ["string", "null"] }
+          "name": { "type": ["string", "null"] },
+          "termsAcceptedAt": { "type": ["string", "null"], "format": "date-time", "description": "When the user accepted the terms of service. Null only for accounts created before the consent fields existed." },
+          "kvkkAcknowledgedAt": { "type": ["string", "null"], "format": "date-time", "description": "When the user acknowledged the KVKK (Turkish data-protection) notice." },
+          "ageConfirmedAt": { "type": ["string", "null"], "format": "date-time", "description": "When the user confirmed they are 18 or older." },
+          "marketingConsentAt": { "type": ["string", "null"], "format": "date-time", "description": "When the user opted in to marketing communications. Null when they declined or have not opted in." }
         }
       },
       "LoginResponse": {
@@ -546,6 +659,15 @@
         "properties": {
           "token": { "type": "string", "description": "Plain-text personal access token; store it and send as a bearer token." },
           "user": { "$ref": "#/components/schemas/User" }
+        }
+      },
+      "GoogleAuthResponse": {
+        "type": "object",
+        "required": ["token", "user", "is_new_user"],
+        "properties": {
+          "token": { "type": "string", "description": "Plain-text personal access token; store it and send as a bearer token." },
+          "user": { "$ref": "#/components/schemas/User" },
+          "is_new_user": { "type": "boolean", "description": "`true` when this request created the account; the caller should prompt for `name` and `email` and `POST /user` to complete registration." }
         }
       }
     }
